@@ -10,9 +10,9 @@ from discord import app_commands
 
 # Replace with your real role IDs
 PREMIUM_ROLES = {
-    "bronze": 111111111111111111,
-    "silver": 222222222222222222,
-    "gold":   333333333333333333
+    "bronze": 1463834717987274814,
+    "silver": 1463884119032463433,
+    "gold":   1463884209025187880
 }
 
 # =========================================================
