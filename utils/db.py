@@ -139,7 +139,7 @@ async def init_db():
         )
         """)
 
-        # =================================================
+# =================================================
         # COUPONS
         # =================================================
         await db.execute("""
@@ -151,24 +151,6 @@ async def init_db():
             used INTEGER DEFAULT 0,
             expires INTEGER
         )
-        """)
-
-        await db.commit()        # COUPONS
-        # =================================================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS coupons (
-            code TEXT PRIMARY KEY,
-            type TEXT,
-            value INTEGER,
-            max_uses INTEGER,
-            used INTEGER DEFAULT 0,
-            expires INTEGER
-        )
-        """)
-
-        await db.commit()            max_uses INTEGER,
-            used INTEGER DEFAULT 0,
-            expires INTEGER
         """)
 
         await db.commit()
