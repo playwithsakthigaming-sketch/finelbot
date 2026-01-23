@@ -35,6 +35,7 @@ COGS = [
     "cogs.moderation",
     "cogs.music",
     "cogs.coupons",
+    "cogs.backup",
     "cogs.youtube"
 ]
 
