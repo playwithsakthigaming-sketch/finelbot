@@ -6,6 +6,13 @@ async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
 
         # =================================================
+        # SQLITE SAFETY PRAGMAS (VERY IMPORTANT)
+        # =================================================
+        await db.execute("PRAGMA journal_mode=WAL;")
+        await db.execute("PRAGMA synchronous=NORMAL;")
+        await db.execute("PRAGMA foreign_keys=ON;")
+
+        # =================================================
         # COINS / ECONOMY
         # =================================================
         await db.execute("""
@@ -144,6 +151,12 @@ async def init_db():
             type TEXT,
             value INTEGER,
             max_uses INTEGER,
+            used INTEGER DEFAULT 0,
+            expires INTEGER
+        )
+        """)
+
+        await db.commit()            max_uses INTEGER,
             used INTEGER DEFAULT 0,
             expires INTEGER
         )
