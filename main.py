@@ -6,8 +6,9 @@ from dotenv import load_dotenv
 
 print("▶ loading env")
 load_dotenv()
+from utils.db import init_db
+print("▶ importing utils") 
 
-print("▶ importing utils")
 from utils.backup import backup_db
 
 # =========================================================
