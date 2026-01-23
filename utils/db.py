@@ -169,7 +169,6 @@ async def init_db():
         await db.commit()            max_uses INTEGER,
             used INTEGER DEFAULT 0,
             expires INTEGER
-        )
         """)
 
         await db.commit()
