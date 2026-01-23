@@ -9,7 +9,7 @@ from utils.backup import (
 )
 
 # 🔴 CHANGE THIS TO YOUR DISCORD USER ID
-ADMIN_ALERT_USER_ID = 123456789012345678
+ADMIN_ALERT_USER_ID = 671669229182779392
 
 # =================================================
 # CONFIRM RESTORE VIEW
