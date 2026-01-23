@@ -15,7 +15,7 @@ YTDLP_OPTIONS = {
     "default_search": "ytsearch",
     "extract_flat": False,
     "nocheckcertificate": True,
-    "ignoreerrors": True,
+    "ignoreerrors": False,  # IMPORTANT
     "source_address": "0.0.0.0"
 }
 
@@ -34,8 +34,8 @@ SPOTIFY_TRACK_REGEX = r"https?://open\.spotify\.com/track/([a-zA-Z0-9]+)"
 # SPOTIFY METADATA FETCH (NO AUTH)
 # =================================================
 def get_spotify_track_info(url: str):
-    track_id = re.search(SPOTIFY_TRACK_REGEX, url)
-    if not track_id:
+    match = re.search(SPOTIFY_TRACK_REGEX, url)
+    if not match:
         return None
 
     api_url = f"https://open.spotify.com/oembed?url={url}"
@@ -44,15 +44,14 @@ def get_spotify_track_info(url: str):
         return None
 
     data = res.json()
-    title = data.get("title")  # "Song Name – Artist"
+    title = data.get("title")  # "Song – Artist"
     if not title:
         return None
 
     if "–" in title:
         song, artist = title.split("–", 1)
     else:
-        song = title
-        artist = ""
+        song, artist = title, ""
 
     return f"{song.strip()} {artist.strip()} audio"
 
@@ -85,7 +84,7 @@ class Music(commands.Cog):
             voice.stop()
 
         # -----------------------------------------
-        # SPOTIFY LINK DETECT
+        # SPOTIFY → YOUTUBE CONVERSION
         # -----------------------------------------
         if "open.spotify.com/track" in query:
             yt_query = get_spotify_track_info(query)
@@ -98,13 +97,23 @@ class Music(commands.Cog):
             yt_query = query
 
         try:
+            # =================================================
+            # SAFE YTDLP EXTRACTION (FIXED)
+            # =================================================
             with yt_dlp.YoutubeDL(YTDLP_OPTIONS) as ydl:
                 info = ydl.extract_info(yt_query, download=False)
+
+                if not info:
+                    raise Exception("No results found")
+
                 if "entries" in info:
-                    info = next(e for e in info["entries"] if e)
+                    info = next((e for e in info["entries"] if e), None)
+
+                if not info or not info.get("url"):
+                    raise Exception("No playable audio found")
 
                 audio_url = info["url"]
-                title = info.get("title", "Unknown")
+                title = info.get("title", "Unknown title")
 
             source = discord.FFmpegPCMAudio(audio_url, **FFMPEG_OPTIONS)
 
