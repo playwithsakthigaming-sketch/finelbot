@@ -104,20 +104,17 @@ async def init_db():
         """)
 
         # ---- SAFE ALTER TABLE FOR NEW WELCOME FEATURES ----
-        try:
-            await db.execute("ALTER TABLE guild_settings ADD COLUMN welcome_message TEXT")
-        except aiosqlite.OperationalError:
-            pass
-
-        try:
-            await db.execute("ALTER TABLE guild_settings ADD COLUMN welcome_bg TEXT")
-        except aiosqlite.OperationalError:
-            pass
-
-        try:
-            await db.execute("ALTER TABLE guild_settings ADD COLUMN welcome_mode TEXT")
-        except aiosqlite.OperationalError:
-            pass
+        for column, col_type in [
+            ("welcome_message", "TEXT"),
+            ("welcome_bg", "TEXT"),
+            ("welcome_mode", "TEXT")
+        ]:
+            try:
+                await db.execute(
+                    f"ALTER TABLE guild_settings ADD COLUMN {column} {col_type}"
+                )
+            except aiosqlite.OperationalError:
+                pass
 
         # =================================================
         # WARNINGS / MODERATION
@@ -144,6 +141,19 @@ async def init_db():
 
         # =================================================
         # COUPONS
+        # =================================================
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS coupons (
+            code TEXT PRIMARY KEY,
+            type TEXT,
+            value INTEGER,
+            max_uses INTEGER,
+            used INTEGER DEFAULT 0,
+            expires INTEGER
+        )
+        """)
+
+        await db.commit()        # COUPONS
         # =================================================
         await db.execute("""
         CREATE TABLE IF NOT EXISTS coupons (
