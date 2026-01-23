@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands, tasks
-import asyncio, os
+import asyncio
+import os
 from dotenv import load_dotenv
 
 from utils.db import init_db
@@ -40,7 +41,7 @@ COGS = [
 # =========================================================
 class MyBot(commands.Bot):
     async def setup_hook(self):
-        # Initialize database (once, before bot is ready)
+        # Initialize database ONCE
         await init_db()
         print("✅ Database initialized")
 
@@ -59,10 +60,13 @@ class MyBot(commands.Bot):
 # =========================================================
 # BOT INSTANCE
 # =========================================================
-bot = MyBot(command_prefix="!", intents=intents)
+bot = MyBot(
+    command_prefix="/",
+    intents=intents
+)
 
 # =========================================================
-# BACKUP TASK (EVERY 6 HOURS)
+# DATABASE BACKUP TASK (EVERY 6 HOURS)
 # =========================================================
 @tasks.loop(hours=6)
 async def db_backup_loop():
@@ -70,7 +74,7 @@ async def db_backup_loop():
     print("💾 Database backup created")
 
 @db_backup_loop.before_loop
-async def before_backup():
+async def before_db_backup():
     await bot.wait_until_ready()
 
 # =========================================================
@@ -89,6 +93,10 @@ async def on_ready():
 # START BOT
 # =========================================================
 async def main():
-    await bot.start(os.getenv("DISCORD_TOKEN"))
+    token = os.getenv("DISCORD_TOKEN")
+    if not token:
+        raise RuntimeError("❌ DISCORD_TOKEN not found in .env")
+
+    await bot.start(token)
 
 asyncio.run(main())
