@@ -5,8 +5,9 @@ import io
 
 # ================== CONFIG ==================
 STAFF_ROLE_ID = 1464425870675411064   # 🔴 PUT YOUR STAFF ROLE ID
-TRANSCRIPT_CHANNEL_ID = 1463892676347953256  # 🔴 PUT YOUR TRANSCRIPT LOG CHANNEL ID
+TRANSCRIPT_CHANNEL_ID = 1463737432351571999  # 🔴 PUT YOUR TRANSCRIPT LOG CHANNEL ID
 # ============================================
+
 
 # =================================================
 # TICKET MODAL
@@ -24,6 +25,8 @@ class TicketModal(discord.ui.Modal):
         self.add_item(self.issue)
 
     async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
         guild = interaction.guild
         staff_role = guild.get_role(STAFF_ROLE_ID)
 
@@ -47,13 +50,14 @@ class TicketModal(discord.ui.Modal):
             view=TicketControlView(interaction.user.id)
         )
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"✅ Ticket created: {channel.mention}",
             ephemeral=True
         )
 
+
 # =================================================
-# CONTROL BUTTONS
+# CONTROL BUTTONS (INSIDE TICKET)
 # =================================================
 class TicketControlView(discord.ui.View):
     def __init__(self, user_id: int):
@@ -70,40 +74,49 @@ class TicketControlView(discord.ui.View):
     # ---------------- CLAIM ----------------
     @discord.ui.button(label="🖐 Claim", style=discord.ButtonStyle.primary)
     async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+
         if not self.is_staff(interaction):
-            return await interaction.response.send_message("❌ Staff only.", ephemeral=True)
+            return await interaction.followup.send("❌ Staff only.", ephemeral=True)
 
         if self.claimed_by:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 f"Already claimed by <@{self.claimed_by}>",
                 ephemeral=True
             )
 
         self.claimed_by = interaction.user.id
         await interaction.channel.send(f"🟢 Ticket claimed by {interaction.user.mention}")
-        await interaction.response.defer()
+        await interaction.followup.send("✅ You claimed this ticket.", ephemeral=True)
 
     # ---------------- CLOSE ----------------
     @discord.ui.button(label="🔒 Close", style=discord.ButtonStyle.secondary)
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+
         if not self.is_staff(interaction):
-            return await interaction.response.send_message("❌ Staff only.", ephemeral=True)
+            return await interaction.followup.send("❌ Staff only.", ephemeral=True)
 
         await interaction.channel.set_permissions(
             interaction.guild.default_role,
             read_messages=False
         )
+
         await interaction.channel.send("🔒 Ticket closed.")
-        await interaction.response.defer()
+        await interaction.followup.send("✅ Ticket closed.", ephemeral=True)
 
     # ---------------- DELETE ----------------
     @discord.ui.button(label="🗑 Delete", style=discord.ButtonStyle.danger)
     async def delete(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+
         if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("❌ Admin only.", ephemeral=True)
+            return await interaction.followup.send("❌ Admin only.", ephemeral=True)
 
         await send_transcript(interaction.channel)
+        await interaction.followup.send("🗑 Ticket deleted. Transcript saved.", ephemeral=True)
         await interaction.channel.delete()
+
 
 # =================================================
 # TRANSCRIPT SYSTEM
@@ -120,17 +133,18 @@ async def send_transcript(channel: discord.TextChannel):
     guild = channel.guild
     log_channel = guild.get_channel(TRANSCRIPT_CHANNEL_ID)
 
-    # send to transcript log channel
+    # Send to transcript log channel
     if log_channel:
         await log_channel.send(f"📄 Transcript for {channel.name}", file=file)
 
-    # send to ticket owner DM
+    # Send to ticket owner DM
     try:
         user_id = int(channel.topic)
         user = await guild.fetch_member(user_id)
         await user.send("📄 Your ticket transcript:", file=file)
     except:
         pass
+
 
 # =================================================
 # MULTI BUTTON PANEL VIEW
@@ -140,6 +154,7 @@ class TicketPanelView(discord.ui.View):
         super().__init__(timeout=None)
         for label, emoji in buttons:
             self.add_item(TicketOpenButton(label, emoji))
+
 
 class TicketOpenButton(discord.ui.Button):
     def __init__(self, label: str, emoji: str):
@@ -151,9 +166,16 @@ class TicketOpenButton(discord.ui.Button):
         self.label_name = label
 
     async def callback(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(
-            TicketModal(self.label_name)
-        )
+        try:
+            await interaction.response.send_modal(
+                TicketModal(self.label_name)
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ Error opening ticket:\n```{e}```",
+                ephemeral=True
+            )
+
 
 # =================================================
 # MAIN COG
@@ -162,9 +184,6 @@ class Tickets(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # -------------------------------------------------
-    # /ticket_panel_multi
-    # -------------------------------------------------
     @app_commands.command(
         name="ticket_panel_multi",
         description="Create a ticket panel with multiple buttons"
@@ -183,6 +202,8 @@ class Tickets(commands.Cog):
         buttons: str,
         imageurl: str = None
     ):
+        await interaction.response.defer(ephemeral=True)
+
         button_list = []
         for part in buttons.split("|"):
             name, emoji = part.split(",")
@@ -203,13 +224,36 @@ class Tickets(commands.Cog):
             view=TicketPanelView(button_list)
         )
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "✅ Multi-button ticket panel created.",
             ephemeral=True
         )
+
+    # Global slash error handler
+    @commands.Cog.listener()
+    async def on_app_command_error(self, interaction: discord.Interaction, error):
+        try:
+            await interaction.response.send_message(
+                f"❌ Error: {error}",
+                ephemeral=True
+            )
+        except:
+            await interaction.followup.send(
+                f"❌ Error: {error}",
+                ephemeral=True
+            )
+
 
 # =================================================
 # SETUP
 # =================================================
 async def setup(bot: commands.Bot):
+    bot.add_view(TicketPanelView([]))  # persistent view
+    await bot.add_cog(Tickets(bot))
+
+# =================================================
+# SETUP
+# =================================================
+async def setup(bot: commands.Bot):
+    bot.add_view(TicketPanelView([]))  # persistent view
     await bot.add_cog(Tickets(bot))
