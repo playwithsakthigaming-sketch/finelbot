@@ -1,12 +1,16 @@
-import discord, aiohttp, re, asyncio
+import discord
+import aiohttp
+import re
+import os
+import aiosqlite
 from discord.ext import commands, tasks
 from discord import app_commands
-import aiosqlite
 
 DB_NAME = "bot.db"
-YOUTUBE_API_KEY = "YOUR_YOUTUBE_API_KEY_HERE"  # 🔴 Put your API key
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 
 YOUTUBE_CHANNEL_REGEX = r"(?:youtube\.com\/(?:channel\/|@))([a-zA-Z0-9_-]+)"
+
 
 # ================= HELPER =================
 def extract_channel_id(url: str):
@@ -43,25 +47,30 @@ class YouTubeAlerts(commands.Cog):
         role: discord.Role,
         message: str
     ):
+        await interaction.response.defer(ephemeral=True)
+
         if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("❌ Admin only.", ephemeral=True)
+            return await interaction.followup.send("❌ Admin only.")
 
         channel_id = extract_channel_id(youtube_url)
         if not channel_id:
-            return await interaction.response.send_message("❌ Invalid YouTube channel URL.", ephemeral=True)
+            return await interaction.followup.send("❌ Invalid YouTube channel URL.")
 
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("""
-                INSERT OR REPLACE INTO youtube_alerts 
-                (guild_id, youtube_channel, discord_channel, role_id, message, last_video)
-                VALUES (?,?,?,?,?,?)
-            """, (interaction.guild.id, channel_id, discord_channel.id, role.id, message, ""))
-            await db.commit()
+        try:
+            async with aiosqlite.connect(DB_NAME) as db:
+                await db.execute("""
+                    INSERT OR REPLACE INTO youtube_alerts 
+                    (guild_id, youtube_channel, discord_channel, role_id, message, last_video)
+                    VALUES (?,?,?,?,?,?)
+                """, (interaction.guild.id, channel_id, discord_channel.id, role.id, message, ""))
+                await db.commit()
 
-        await interaction.response.send_message(
-            f"✅ YouTube alerts added for `{youtube_url}` in {discord_channel.mention}",
-            ephemeral=True
-        )
+            await interaction.followup.send(
+                f"✅ YouTube alerts set for `{youtube_url}` in {discord_channel.mention}"
+            )
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error:\n```{e}```")
 
     # =================================================
     # LIVE CHECK LOOP
@@ -75,49 +84,56 @@ class YouTubeAlerts(commands.Cog):
                 rows = await cursor.fetchall()
 
         for guild_id, yt_channel, discord_channel_id, role_id, message, last_video in rows:
-            video = await self.fetch_latest_video(yt_channel)
-            if not video:
-                continue
+            try:
+                video = await self.fetch_live_video(yt_channel)
+                if not video:
+                    continue
 
-            video_id = video["id"]["videoId"]
-            title = video["snippet"]["title"]
-            thumb = video["snippet"]["thumbnails"]["high"]["url"]
-            url = f"https://youtube.com/watch?v={video_id}"
+                video_id = video["id"]["videoId"]
+                title = video["snippet"]["title"]
+                thumb = video["snippet"]["thumbnails"]["high"]["url"]
+                url = f"https://youtube.com/watch?v={video_id}"
 
-            if video_id == last_video:
-                continue  # already sent
+                if video_id == last_video:
+                    continue  # already sent
 
-            embed = discord.Embed(
-                title="🔴 LIVE NOW!",
-                description=f"**{title}**\n\n{message}",
-                color=discord.Color.red()
-            )
-            embed.set_thumbnail(url=thumb)
-            embed.add_field(name="Watch Here", value=url)
-
-            guild = self.bot.get_guild(guild_id)
-            if not guild:
-                continue
-
-            channel = guild.get_channel(discord_channel_id)
-            role = guild.get_role(role_id)
-
-            if not channel:
-                continue
-
-            await channel.send(content=role.mention if role else None, embed=embed)
-
-            async with aiosqlite.connect(DB_NAME) as db:
-                await db.execute(
-                    "UPDATE youtube_alerts SET last_video=? WHERE guild_id=? AND youtube_channel=?",
-                    (video_id, guild_id, yt_channel)
+                embed = discord.Embed(
+                    title="🔴 LIVE NOW!",
+                    description=f"**{title}**\n\n{message}",
+                    color=discord.Color.red()
                 )
-                await db.commit()
+                embed.set_thumbnail(url=thumb)
+                embed.add_field(name="Watch Here", value=url)
+
+                guild = self.bot.get_guild(guild_id)
+                if not guild:
+                    continue
+
+                channel = guild.get_channel(discord_channel_id)
+                role = guild.get_role(role_id)
+
+                if not channel:
+                    continue
+
+                await channel.send(
+                    content=role.mention if role else None,
+                    embed=embed
+                )
+
+                async with aiosqlite.connect(DB_NAME) as db:
+                    await db.execute(
+                        "UPDATE youtube_alerts SET last_video=? WHERE guild_id=? AND youtube_channel=?",
+                        (video_id, guild_id, yt_channel)
+                    )
+                    await db.commit()
+
+            except Exception as e:
+                print(f"YouTube alert error: {e}")
 
     # =================================================
-    # FETCH YOUTUBE LIVE VIDEO
+    # FETCH LIVE VIDEO
     # =================================================
-    async def fetch_latest_video(self, channel_id: str):
+    async def fetch_live_video(self, channel_id: str):
         url = (
             "https://www.googleapis.com/youtube/v3/search"
             f"?part=snippet&channelId={channel_id}&eventType=live&type=video&key={YOUTUBE_API_KEY}"
