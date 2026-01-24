@@ -3,10 +3,10 @@ from discord.ext import commands
 from discord import app_commands
 import io
 
-# ================== CONFIG ==================
-STAFF_ROLE_ID = 1464425870675411064   # 🔴 PUT YOUR STAFF ROLE ID
-TRANSCRIPT_CHANNEL_ID = 1463737432351571999  # 🔴 PUT YOUR TRANSCRIPT LOG CHANNEL ID
-# ============================================
+# ================= CONFIG =================
+STAFF_ROLE_ID = 123456789012345678        # PUT YOUR STAFF ROLE ID
+TRANSCRIPT_CHANNEL_ID = 123456789012345678  # PUT YOUR TRANSCRIPT LOG CHANNEL ID
+# =========================================
 
 
 # =================================================
@@ -57,7 +57,7 @@ class TicketModal(discord.ui.Modal):
 
 
 # =================================================
-# CONTROL BUTTONS (INSIDE TICKET)
+# CONTROL BUTTONS
 # =================================================
 class TicketControlView(discord.ui.View):
     def __init__(self, user_id: int):
@@ -71,7 +71,7 @@ class TicketControlView(discord.ui.View):
         role = interaction.guild.get_role(STAFF_ROLE_ID)
         return role in interaction.user.roles if role else False
 
-    # ---------------- CLAIM ----------------
+    # -------- CLAIM --------
     @discord.ui.button(label="🖐 Claim", style=discord.ButtonStyle.primary)
     async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
@@ -87,9 +87,9 @@ class TicketControlView(discord.ui.View):
 
         self.claimed_by = interaction.user.id
         await interaction.channel.send(f"🟢 Ticket claimed by {interaction.user.mention}")
-        await interaction.followup.send("✅ You claimed this ticket.", ephemeral=True)
+        await interaction.followup.send("✅ Ticket claimed.", ephemeral=True)
 
-    # ---------------- CLOSE ----------------
+    # -------- CLOSE --------
     @discord.ui.button(label="🔒 Close", style=discord.ButtonStyle.secondary)
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
@@ -105,7 +105,7 @@ class TicketControlView(discord.ui.View):
         await interaction.channel.send("🔒 Ticket closed.")
         await interaction.followup.send("✅ Ticket closed.", ephemeral=True)
 
-    # ---------------- DELETE ----------------
+    # -------- DELETE --------
     @discord.ui.button(label="🗑 Delete", style=discord.ButtonStyle.danger)
     async def delete(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
@@ -133,11 +133,9 @@ async def send_transcript(channel: discord.TextChannel):
     guild = channel.guild
     log_channel = guild.get_channel(TRANSCRIPT_CHANNEL_ID)
 
-    # Send to transcript log channel
     if log_channel:
         await log_channel.send(f"📄 Transcript for {channel.name}", file=file)
 
-    # Send to ticket owner DM
     try:
         user_id = int(channel.topic)
         user = await guild.fetch_member(user_id)
@@ -147,7 +145,7 @@ async def send_transcript(channel: discord.TextChannel):
 
 
 # =================================================
-# MULTI BUTTON PANEL VIEW
+# PANEL VIEW (MULTI BUTTON)
 # =================================================
 class TicketPanelView(discord.ui.View):
     def __init__(self, buttons: list):
@@ -167,9 +165,7 @@ class TicketOpenButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         try:
-            await interaction.response.send_modal(
-                TicketModal(self.label_name)
-            )
+            await interaction.response.send_modal(TicketModal(self.label_name))
         except Exception as e:
             await interaction.response.send_message(
                 f"❌ Error opening ticket:\n```{e}```",
@@ -191,7 +187,9 @@ class Tickets(commands.Cog):
     @app_commands.describe(
         title="Panel title",
         description="Panel description",
-        buttons="Buttons format: Support,🎫|Report,⚠|Billing,💰",
+        buttons="Format: Support,🎫|Report,⚠|Billing,💰",
+        role="Role to tag",
+        channel="Channel to send panel",
         imageurl="Image URL (optional)"
     )
     async def ticket_panel_multi(
@@ -200,46 +198,43 @@ class Tickets(commands.Cog):
         title: str,
         description: str,
         buttons: str,
+        role: discord.Role,
+        channel: discord.TextChannel,
         imageurl: str = None
     ):
         await interaction.response.defer(ephemeral=True)
 
-        button_list = []
-        for part in buttons.split("|"):
-            name, emoji = part.split(",")
-            button_list.append((name.strip(), emoji.strip()))
-
-        embed = discord.Embed(
-            title=title,
-            description=description,
-            color=discord.Color.blue()
-        )
-        embed.set_footer(text="Click a button to open ticket")
-
-        if imageurl:
-            embed.set_image(url=imageurl)
-
-        await interaction.channel.send(
-            embed=embed,
-            view=TicketPanelView(button_list)
-        )
-
-        await interaction.followup.send(
-            "✅ Multi-button ticket panel created.",
-            ephemeral=True
-        )
-
-    # Global slash error handler
-    @commands.Cog.listener()
-    async def on_app_command_error(self, interaction: discord.Interaction, error):
         try:
-            await interaction.response.send_message(
-                f"❌ Error: {error}",
-                ephemeral=True
+            button_list = []
+            for part in buttons.split("|"):
+                if "," not in part:
+                    return await interaction.followup.send(
+                        "❌ Wrong format. Use: `Name,Emoji|Name,Emoji`",
+                        ephemeral=True
+                    )
+                name, emoji = part.split(",", 1)
+                button_list.append((name.strip(), emoji.strip()))
+
+            embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
+            embed.set_footer(text="Click a button to open ticket")
+
+            if imageurl:
+                embed.set_image(url=imageurl)
+
+            await channel.send(
+                content=role.mention,
+                embed=embed,
+                view=TicketPanelView(button_list)
             )
-        except:
+
             await interaction.followup.send(
-                f"❌ Error: {error}",
+                f"✅ Ticket panel created in {channel.mention}",
+                ephemeral=True
+            )
+
+        except Exception as e:
+            await interaction.followup.send(
+                f"❌ Failed to create panel:\n```{e}```",
                 ephemeral=True
             )
 
@@ -248,12 +243,5 @@ class Tickets(commands.Cog):
 # SETUP
 # =================================================
 async def setup(bot: commands.Bot):
-    bot.add_view(TicketPanelView([]))  # persistent view
-    await bot.add_cog(Tickets(bot))
-
-# =================================================
-# SETUP
-# =================================================
-async def setup(bot: commands.Bot):
-    bot.add_view(TicketPanelView([]))  # persistent view
+    bot.add_view(TicketPanelView([]))  # persistent buttons
     await bot.add_cog(Tickets(bot))
