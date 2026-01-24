@@ -1,31 +1,82 @@
-import discord
+import discord, time, io, aiosqlite
 from discord.ext import commands
 from discord import app_commands
-import io
 
-# ================= CONFIG =================
-STAFF_ROLE_ID = 1464425870675411064        # PUT YOUR STAFF ROLE ID
-TRANSCRIPT_CHANNEL_ID = 1463821349809029274  # PUT YOUR TRANSCRIPT LOG CHANNEL ID
-# =========================================
+STAFF_ROLE_ID = 1464425870675411064
+PREMIUM_ROLE_ID = 1463884209025187880
+TRANSCRIPT_CHANNEL_ID = 1463891728598827091
+TICKET_COOLDOWN_SECONDS = 500
+DB_NAME = "bot.db"
 
-
-# =================================================
-# TICKET MODAL
-# =================================================
-class TicketModal(discord.ui.Modal):
-    def __init__(self, label: str):
-        super().__init__(title=f"🎫 {label} Ticket")
-
-        self.issue = discord.ui.TextInput(
-            label="Describe your issue",
-            style=discord.TextStyle.paragraph,
-            required=True,
-            max_length=1000
+# ================= DATABASE HELPERS =================
+async def save_ticket(channel_id, user_id, category):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO tickets (channel_id, user_id, claimed_by, category, created_at) VALUES (?,?,?,?,?)",
+            (channel_id, user_id, None, category, int(time.time()))
         )
+        await db.commit()
+
+async def update_claim(channel_id, staff_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE tickets SET claimed_by=? WHERE channel_id=?", (staff_id, channel_id))
+        await db.commit()
+
+async def get_ticket(channel_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT user_id, claimed_by FROM tickets WHERE channel_id=?", (channel_id,)) as cur:
+            return await cur.fetchone()
+
+async def delete_ticket(channel_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("DELETE FROM tickets WHERE channel_id=?", (channel_id,))
+        await db.commit()
+
+# ================= COOLDOWN =================
+async def check_cooldown(user: discord.Member):
+    if user.guild_permissions.administrator:
+        return 0
+    if any(r.id == STAFF_ROLE_ID for r in user.roles):
+        return 0
+    if any(r.id == PREMIUM_ROLE_ID for r in user.roles):
+        return 0
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT last_created FROM ticket_cooldowns WHERE user_id=?", (user.id,)) as cur:
+            row = await cur.fetchone()
+
+    now = int(time.time())
+    if row:
+        remaining = TICKET_COOLDOWN_SECONDS - (now - row[0])
+        if remaining > 0:
+            return remaining
+    return 0
+
+async def update_cooldown(user_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO ticket_cooldowns (user_id, last_created) VALUES (?,?)",
+            (user_id, int(time.time()))
+        )
+        await db.commit()
+
+# ================= MODAL =================
+class TicketModal(discord.ui.Modal):
+    def __init__(self, label: str, category: discord.CategoryChannel):
+        super().__init__(title=f"🎫 {label} Ticket")
+        self.category = category
+        self.issue = discord.ui.TextInput(label="Describe your issue", style=discord.TextStyle.paragraph)
         self.add_item(self.issue)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
+
+        remaining = await check_cooldown(interaction.user)
+        if remaining > 0:
+            return await interaction.followup.send(
+                f"⏳ Wait **{remaining} seconds** before creating another ticket.\n⭐ Premium users have no cooldown.",
+                ephemeral=True
+            )
 
         guild = interaction.guild
         staff_role = guild.get_role(STAFF_ROLE_ID)
@@ -33,165 +84,140 @@ class TicketModal(discord.ui.Modal):
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
             interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            staff_role: discord.PermissionOverwrite(read_messages=True, send_messages=False)
         }
-
-        if staff_role:
-            overwrites[staff_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
 
         channel = await guild.create_text_channel(
             name=f"ticket-{interaction.user.name}",
             overwrites=overwrites,
+            category=self.category,
             topic=str(interaction.user.id)
         )
 
+        await save_ticket(channel.id, interaction.user.id, self.category.name)
+        await update_cooldown(interaction.user.id)
+
         await channel.send(
-            content=f"{interaction.user.mention} {staff_role.mention if staff_role else ''}\n"
-                    f"📌 **Issue:**\n{self.issue.value}",
+            f"{interaction.user.mention} {staff_role.mention}\n📌 {self.issue.value}",
             view=TicketControlView(interaction.user.id)
         )
 
-        await interaction.followup.send(
-            f"✅ Ticket created: {channel.mention}",
-            ephemeral=True
-        )
+        await interaction.followup.send(f"✅ Ticket created: {channel.mention}", ephemeral=True)
 
-
-# =================================================
-# CONTROL BUTTONS
-# =================================================
+# ================= CONTROL VIEW =================
 class TicketControlView(discord.ui.View):
-    def __init__(self, user_id: int):
+    def __init__(self, user_id):
         super().__init__(timeout=None)
         self.user_id = user_id
-        self.claimed_by = None
 
-    def is_staff(self, interaction: discord.Interaction):
-        if interaction.user.guild_permissions.administrator:
-            return True
-        role = interaction.guild.get_role(STAFF_ROLE_ID)
-        return role in interaction.user.roles if role else False
+    def is_staff(self, member):
+        role = member.guild.get_role(STAFF_ROLE_ID)
+        return role in member.roles or member.guild_permissions.administrator
 
-    # -------- CLAIM --------
+    # ADD USER
+    @discord.ui.button(label="➕ Add User", style=discord.ButtonStyle.success)
+    async def add_user(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.is_staff(interaction.user):
+            return await interaction.response.send_message("❌ Staff only.", ephemeral=True)
+        await interaction.response.send_modal(AddUserModal())
+
+    # CLAIM
     @discord.ui.button(label="🖐 Claim", style=discord.ButtonStyle.primary)
     async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
 
-        if not self.is_staff(interaction):
+        if not self.is_staff(interaction.user):
             return await interaction.followup.send("❌ Staff only.", ephemeral=True)
 
-        if self.claimed_by:
-            return await interaction.followup.send(
-                f"Already claimed by <@{self.claimed_by}>",
-                ephemeral=True
-            )
+        ticket = await get_ticket(interaction.channel.id)
+        if ticket and ticket[1]:
+            return await interaction.followup.send("❌ Already claimed.", ephemeral=True)
 
-        self.claimed_by = interaction.user.id
-        await interaction.channel.send(f"🟢 Ticket claimed by {interaction.user.mention}")
+        await update_claim(interaction.channel.id, interaction.user.id)
+
+        await interaction.channel.set_permissions(interaction.user, send_messages=True)
+        await interaction.channel.set_permissions(interaction.guild.get_member(self.user_id), send_messages=False)
+
+        await interaction.channel.send(f"🟢 Claimed by {interaction.user.mention}")
         await interaction.followup.send("✅ Ticket claimed.", ephemeral=True)
 
-    # -------- CLOSE --------
+    # CLOSE
     @discord.ui.button(label="🔒 Close", style=discord.ButtonStyle.secondary)
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
+        if not self.is_staff(interaction.user):
+            return await interaction.response.send_message("❌ Staff only.", ephemeral=True)
 
-        if not self.is_staff(interaction):
-            return await interaction.followup.send("❌ Staff only.", ephemeral=True)
-
-        await interaction.channel.set_permissions(
-            interaction.guild.default_role,
-            read_messages=False
-        )
+        guild = interaction.guild
+        await interaction.channel.set_permissions(guild.default_role, read_messages=False)
+        await interaction.channel.set_permissions(guild.get_role(STAFF_ROLE_ID), read_messages=False)
+        await interaction.channel.set_permissions(guild.get_member(self.user_id), read_messages=False)
 
         await interaction.channel.send("🔒 Ticket closed.")
-        await interaction.followup.send("✅ Ticket closed.", ephemeral=True)
+        await interaction.response.send_message("Closed & hidden.", ephemeral=True)
 
-    # -------- DELETE --------
+    # DELETE (ONLY CLAIMER OR ADMIN)
     @discord.ui.button(label="🗑 Delete", style=discord.ButtonStyle.danger)
     async def delete(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
+        ticket = await get_ticket(interaction.channel.id)
+        if not ticket:
+            return await interaction.response.send_message("❌ Ticket not found.", ephemeral=True)
 
-        if not interaction.user.guild_permissions.administrator:
-            return await interaction.followup.send("❌ Admin only.", ephemeral=True)
+        claimed_by = ticket[1]
+        if not (interaction.user.guild_permissions.administrator or interaction.user.id == claimed_by):
+            return await interaction.response.send_message("❌ Only claimer or admin can delete.", ephemeral=True)
 
         await send_transcript(interaction.channel)
-        await interaction.followup.send("🗑 Ticket deleted. Transcript saved.", ephemeral=True)
+        await delete_ticket(interaction.channel.id)
         await interaction.channel.delete()
 
+# ================= ADD USER MODAL =================
+class AddUserModal(discord.ui.Modal, title="Add User to Ticket"):
+    user_id = discord.ui.TextInput(label="User ID")
 
-# =================================================
-# TRANSCRIPT SYSTEM
-# =================================================
-async def send_transcript(channel: discord.TextChannel):
+    async def on_submit(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        user = guild.get_member(int(self.user_id.value))
+        if not user:
+            return await interaction.response.send_message("❌ User not found.", ephemeral=True)
+
+        await interaction.channel.set_permissions(user, read_messages=True, send_messages=True)
+        await interaction.response.send_message(f"✅ Added {user.mention}.", ephemeral=True)
+
+# ================= TRANSCRIPT =================
+async def send_transcript(channel):
     messages = []
     async for msg in channel.history(limit=None, oldest_first=True):
-        time = msg.created_at.strftime("%Y-%m-%d %H:%M")
-        messages.append(f"[{time}] {msg.author}: {msg.content}")
+        messages.append(f"[{msg.created_at}] {msg.author}: {msg.content}")
 
     data = "\n".join(messages)
     file = discord.File(io.BytesIO(data.encode()), filename=f"{channel.name}.txt")
 
-    guild = channel.guild
-    log_channel = guild.get_channel(TRANSCRIPT_CHANNEL_ID)
-
+    log_channel = channel.guild.get_channel(TRANSCRIPT_CHANNEL_ID)
     if log_channel:
         await log_channel.send(f"📄 Transcript for {channel.name}", file=file)
 
-    try:
-        user_id = int(channel.topic)
-        user = await guild.fetch_member(user_id)
-        await user.send("📄 Your ticket transcript:", file=file)
-    except:
-        pass
-
-
-# =================================================
-# PANEL VIEW (MULTI BUTTON)
-# =================================================
+# ================= PANEL VIEW =================
 class TicketPanelView(discord.ui.View):
-    def __init__(self, buttons: list):
+    def __init__(self, buttons):
         super().__init__(timeout=None)
-        for label, emoji in buttons:
-            self.add_item(TicketOpenButton(label, emoji))
-
+        for label, emoji, category in buttons:
+            self.add_item(TicketOpenButton(label, emoji, category))
 
 class TicketOpenButton(discord.ui.Button):
-    def __init__(self, label: str, emoji: str):
-        super().__init__(
-            label=label,
-            style=discord.ButtonStyle.success,
-            emoji=emoji
-        )
+    def __init__(self, label, emoji, category):
+        super().__init__(label=label, style=discord.ButtonStyle.success, emoji=emoji)
         self.label_name = label
+        self.category = category
 
     async def callback(self, interaction: discord.Interaction):
-        try:
-            await interaction.response.send_modal(TicketModal(self.label_name))
-        except Exception as e:
-            await interaction.response.send_message(
-                f"❌ Error opening ticket:\n```{e}```",
-                ephemeral=True
-            )
+        await interaction.response.send_modal(TicketModal(self.label_name, self.category))
 
-
-# =================================================
-# MAIN COG
-# =================================================
+# ================= COG =================
 class Tickets(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(
-        name="ticket_panel_multi",
-        description="Create a ticket panel with multiple buttons"
-    )
-    @app_commands.describe(
-        title="Panel title",
-        description="Panel description",
-        buttons="Format: Support,🎫|Report,⚠|Billing,💰",
-        role="Role to tag",
-        channel="Channel to send panel",
-        imageurl="Image URL (optional)"
-    )
+    @app_commands.command(name="ticket_panel_multi", description="Create ticket panel with categories")
     async def ticket_panel_multi(
         self,
         interaction: discord.Interaction,
@@ -202,46 +228,27 @@ class Tickets(commands.Cog):
         channel: discord.TextChannel,
         imageurl: str = None
     ):
+        """
+        buttons format:
+        Support,🎫,SupportCat|Report,⚠,ReportCat
+        """
         await interaction.response.defer(ephemeral=True)
 
-        try:
-            button_list = []
-            for part in buttons.split("|"):
-                if "," not in part:
-                    return await interaction.followup.send(
-                        "❌ Wrong format. Use: `Name,Emoji|Name,Emoji`",
-                        ephemeral=True
-                    )
-                name, emoji = part.split(",", 1)
-                button_list.append((name.strip(), emoji.strip()))
+        button_list = []
+        for part in buttons.split("|"):
+            name, emoji, category_name = part.split(",", 2)
+            category = discord.utils.get(interaction.guild.categories, name=category_name)
+            if not category:
+                return await interaction.followup.send(f"❌ Category `{category_name}` not found.", ephemeral=True)
+            button_list.append((name.strip(), emoji.strip(), category))
 
-            embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
-            embed.set_footer(text="Click a button to open ticket")
+        embed = discord.Embed(title=title, description=description)
+        if imageurl:
+            embed.set_image(url=imageurl)
 
-            if imageurl:
-                embed.set_image(url=imageurl)
+        await channel.send(role.mention, embed=embed, view=TicketPanelView(button_list))
+        await interaction.followup.send("✅ Ticket panel created.", ephemeral=True)
 
-            await channel.send(
-                content=role.mention,
-                embed=embed,
-                view=TicketPanelView(button_list)
-            )
-
-            await interaction.followup.send(
-                f"✅ Ticket panel created in {channel.mention}",
-                ephemeral=True
-            )
-
-        except Exception as e:
-            await interaction.followup.send(
-                f"❌ Failed to create panel:\n```{e}```",
-                ephemeral=True
-            )
-
-
-# =================================================
-# SETUP
-# =================================================
-async def setup(bot: commands.Bot):
-    bot.add_view(TicketPanelView([]))  # persistent buttons
+async def setup(bot):
+    bot.add_view(TicketPanelView([]))
     await bot.add_cog(Tickets(bot))
