@@ -138,10 +138,14 @@ async def init_db():
         # =================================================
         await db.execute("""
         CREATE TABLE IF NOT EXISTS youtube_alerts (
-            guild_id INTEGER PRIMARY KEY,
-            youtube_channel TEXT,
-            discord_channel INTEGER
-        )
+         guild_id INTEGER,
+         youtube_channel TEXT,
+         discord_channel INTEGER,
+         role_id INTEGER,
+         message TEXT,
+         last_video TEXT,
+         PRIMARY KEY (guild_id, youtube_channel)
+    )
         """)
 
         # =================================================
