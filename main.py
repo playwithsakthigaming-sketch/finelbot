@@ -32,8 +32,7 @@ COGS = [
     "cogs.payment",
     "cogs.coin_shop",
     "cogs.announce",
-    "cogs.moderation",
-    "cogs.music",
+    "cogs.moderation", 
     "cogs.coupons",
     "cogs.backup",
     "cogs.youtube"
