@@ -6,7 +6,7 @@ async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
 
         # =================================================
-        # SQLITE SAFETY PRAGMAS (VERY IMPORTANT)
+        # SQLITE SAFETY PRAGMAS
         # =================================================
         await db.execute("PRAGMA journal_mode=WAL;")
         await db.execute("PRAGMA synchronous=NORMAL;")
@@ -57,22 +57,37 @@ async def init_db():
         """)
 
         # =================================================
-        # TICKETS
+        # TICKETS (MAIN)
         # =================================================
         await db.execute("""
         CREATE TABLE IF NOT EXISTS tickets (
             channel_id INTEGER PRIMARY KEY,
             user_id INTEGER,
-            created_at INTEGER,
-            claimed_by INTEGER
+            claimed_by INTEGER,
+            category TEXT,
+            created_at INTEGER
         )
         """)
 
+        # =================================================
+        # TICKET COOLDOWNS
+        # =================================================
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS ticket_cooldowns (
+            user_id INTEGER PRIMARY KEY,
+            last_created INTEGER
+        )
+        """)
+
+        # =================================================
+        # TICKET TRANSCRIPTS
+        # =================================================
         await db.execute("""
         CREATE TABLE IF NOT EXISTS ticket_transcripts (
-            ticket_id INTEGER,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id INTEGER,
+            author_id INTEGER,
             message TEXT,
-            author INTEGER,
             timestamp INTEGER
         )
         """)
@@ -99,22 +114,12 @@ async def init_db():
             welcome_channel INTEGER,
             welcome_role INTEGER,
             goodbye_channel INTEGER,
-            modlog_channel INTEGER
+            modlog_channel INTEGER,
+            welcome_message TEXT,
+            welcome_bg TEXT,
+            welcome_mode TEXT
         )
         """)
-
-        # ---- SAFE ALTER TABLE FOR NEW WELCOME FEATURES ----
-        for column, col_type in [
-            ("welcome_message", "TEXT"),
-            ("welcome_bg", "TEXT"),
-            ("welcome_mode", "TEXT")
-        ]:
-            try:
-                await db.execute(
-                    f"ALTER TABLE guild_settings ADD COLUMN {column} {col_type}"
-                )
-            except aiosqlite.OperationalError:
-                pass
 
         # =================================================
         # WARNINGS / MODERATION
@@ -139,7 +144,7 @@ async def init_db():
         )
         """)
 
-# =================================================
+        # =================================================
         # COUPONS
         # =================================================
         await db.execute("""
