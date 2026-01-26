@@ -4,12 +4,12 @@ import asyncio
 import os
 from dotenv import load_dotenv
 
-print("▶ loading env")
-load_dotenv()
 from utils.db import init_db
-print("▶ importing utils") 
-
 from utils.backup import backup_db
+
+print("▶ Loading env")
+load_dotenv()
+print("▶ Env loaded")
 
 # =========================================================
 # INTENTS
@@ -32,7 +32,7 @@ COGS = [
     "cogs.payment",
     "cogs.coin_shop",
     "cogs.announce",
-    "cogs.moderation", 
+    "cogs.moderation",
     "cogs.coupons",
     "cogs.backup",
     "cogs.admin",
@@ -44,9 +44,11 @@ COGS = [
 # =========================================================
 class MyBot(commands.Bot):
     async def setup_hook(self):
+        # Init DB once
         await init_db()
         print("✅ Database initialized")
 
+        # Load cogs
         for cog in COGS:
             try:
                 await self.load_extension(cog)
@@ -54,6 +56,7 @@ class MyBot(commands.Bot):
             except Exception as e:
                 print(f"❌ Failed to load {cog}: {e}")
 
+        # Sync slash commands
         await self.tree.sync()
         print("✅ Slash commands synced")
 
@@ -63,7 +66,7 @@ class MyBot(commands.Bot):
 bot = MyBot(command_prefix="!", intents=intents)
 
 # =========================================================
-# BACKUP TASK
+# BACKUP TASK (every 6 hours)
 # =========================================================
 @tasks.loop(hours=6)
 async def db_backup_loop():
@@ -80,17 +83,20 @@ async def before_backup():
 @bot.event
 async def on_ready():
     print(f"🤖 Logged in as {bot.user}")
+
     if not db_backup_loop.is_running():
         db_backup_loop.start()
+
     print("✅ Bot fully ready")
 
 # =========================================================
-# START
+# START BOT
 # =========================================================
 async def main():
     token = os.getenv("DISCORD_TOKEN")
     if not token:
-        raise RuntimeError("❌ DISCORD_TOKEN missing")
+        raise RuntimeError("❌ DISCORD_TOKEN missing in .env")
+
     await bot.start(token)
 
 asyncio.run(main())
