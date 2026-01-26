@@ -11,13 +11,12 @@ PRICES = {"bronze": 100, "silver": 200, "gold": 300}
 DAYS = {"bronze": 3, "silver": 5, "gold": 7}
 
 PREMIUM_ROLE_IDS = {
-    ""bronze": 1463834717987274814,
+    "bronze": 1463834717987274814,
     "silver": 1463884119032463433,
     "gold": 1463884209025187880
 }
 
 LOGO_URL = "https://your-logo.png"
-INVOICE_BG = "https://i.imgur.com/zvWTUVu.png"
 
 
 # ================= TIER SELECT =================
@@ -45,10 +44,7 @@ class BuyPremiumModal(discord.ui.Modal):
         self.tier = tier
 
         self.name = discord.ui.TextInput(label="Your Name")
-        self.coupon = discord.ui.TextInput(label="Coupon (optional)", required=False)
-
         self.add_item(self.name)
-        self.add_item(self.coupon)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -56,7 +52,6 @@ class BuyPremiumModal(discord.ui.Modal):
         user_id = interaction.user.id
         tier = self.tier
         price = PRICES[tier]
-        discount = 0
 
         # Get balance
         async with aiosqlite.connect(DB_NAME) as db:
@@ -105,7 +100,6 @@ class BuyPremiumModal(discord.ui.Modal):
         embed.add_field(name="🖊 Signature", value="Kingofmyqueen", inline=True)
 
         embed.set_footer(text="Thank you for your support!")
-        embed.set_image(url=INVOICE_BG)
 
         await interaction.followup.send(embed=embed, view=RefundView(user_id, tier, price))
 
@@ -150,7 +144,6 @@ class CoinShop(commands.Cog):
         self.bot = bot
         self.expiry_task.start()
 
-    # PANEL
     @app_commands.command(name="coin_shop_panel", description="Create PSG Family coin shop panel")
     async def coin_shop_panel(self, interaction: discord.Interaction, channel: discord.TextChannel):
         if not interaction.user.guild_permissions.administrator:
@@ -175,8 +168,7 @@ class CoinShop(commands.Cog):
         await channel.send(embed=embed, view=CoinShopView())
         await interaction.response.send_message("✅ Coin shop panel created.", ephemeral=True)
 
-    # HISTORY
-    @app_commands.command(name="coin_shop_history", description="View your coin shop history")
+    @app_commands.command(name="coin_shop_history", description="View your purchase history")
     async def coin_shop_history(self, interaction: discord.Interaction):
         async with aiosqlite.connect(DB_NAME) as db:
             async with db.execute(
@@ -195,7 +187,6 @@ class CoinShop(commands.Cog):
         embed = discord.Embed(title="📜 Coin Shop History", description=text, color=discord.Color.green())
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    # AUTO EXPIRY
     @tasks.loop(minutes=1)
     async def expiry_task(self):
         async with aiosqlite.connect(DB_NAME) as db:
@@ -223,5 +214,5 @@ class CoinShop(commands.Cog):
 
 # ================= SETUP =================
 async def setup(bot):
-    bot.add_view(CoinShopView())  # persistent view
+    bot.add_view(CoinShopView())
     await bot.add_cog(CoinShop(bot))
