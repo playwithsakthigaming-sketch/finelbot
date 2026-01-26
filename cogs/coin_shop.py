@@ -6,30 +6,32 @@ from discord import app_commands
 
 DB_NAME = "bot.db"
 
-PRICES = {"bronze":100, "silver":200, "gold":300}
-DAYS = {"bronze":3, "silver":5, "gold":7}
+# ================= CONFIG =================
+PRICES = {"bronze": 100, "silver": 200, "gold": 300}
+DAYS = {"bronze": 3, "silver": 5, "gold": 7}
 
 PREMIUM_ROLE_IDS = {
-    "bronze": 1463834717987274814,
+    ""bronze": 1463834717987274814,
     "silver": 1463884119032463433,
     "gold": 1463884209025187880
 }
 
-INVOICE_GIF_URL = "https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif"
+LOGO_URL = "https://your-logo.png"
+INVOICE_BG = "https://i.imgur.com/zvWTUVu.png"
 
 
-# ================= SELECT MENU =================
+# ================= TIER SELECT =================
 class TierSelect(discord.ui.Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label="Bronze", value="bronze", emoji="🥉"),
-            discord.SelectOption(label="Silver", value="silver", emoji="🥈"),
-            discord.SelectOption(label="Gold", value="gold", emoji="🥇")
+            discord.SelectOption(label="Bronze (3 Days)", value="bronze", emoji="🥉"),
+            discord.SelectOption(label="Silver (5 Days)", value="silver", emoji="🥈"),
+            discord.SelectOption(label="Gold (7 Days)", value="gold", emoji="🥇"),
         ]
         super().__init__(
-            placeholder="Choose Premium Tier",
+            placeholder="Select Premium Tier",
             options=options,
-            custom_id="coinshop_tier_select"  # REQUIRED
+            custom_id="coinshop_select"
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -39,7 +41,7 @@ class TierSelect(discord.ui.Select):
 # ================= BUY MODAL =================
 class BuyPremiumModal(discord.ui.Modal):
     def __init__(self, tier):
-        super().__init__(title="Buy Premium")
+        super().__init__(title="PSG FAMILY - Buy Premium")
         self.tier = tier
 
         self.name = discord.ui.TextInput(label="Your Name")
@@ -51,54 +53,31 @@ class BuyPremiumModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
 
-        tier = self.tier
         user_id = interaction.user.id
+        tier = self.tier
         price = PRICES[tier]
         discount = 0
 
+        # Get balance
         async with aiosqlite.connect(DB_NAME) as db:
             async with db.execute("SELECT balance FROM coins WHERE user_id=?", (user_id,)) as cur:
                 row = await cur.fetchone()
                 balance = row[0] if row else 0
 
-        # ===== COUPON CHECK =====
-        if self.coupon.value:
-            async with aiosqlite.connect(DB_NAME) as db:
-                async with db.execute(
-                    "SELECT type,value,used,max_uses FROM coupons WHERE code=?",
-                    (self.coupon.value,)
-                ) as cur:
-                    coupon = await cur.fetchone()
-
-            if not coupon:
-                return await interaction.followup.send("❌ Invalid coupon.")
-
-            c_type, value, used, max_uses = coupon
-            if used >= max_uses:
-                return await interaction.followup.send("❌ Coupon expired.")
-
-            discount = int(price * value / 100) if c_type == "percent" else value
-
-        final_price = max(price - discount, 0)
-
-        if balance < final_price:
-            return await interaction.followup.send(f"❌ Not enough coins. Need {final_price} coins.")
+        if balance < price:
+            return await interaction.followup.send("❌ Not enough coins.", ephemeral=True)
 
         expires = int(time.time()) + DAYS[tier] * 86400
 
         async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("UPDATE coins SET balance=balance-? WHERE user_id=?", (final_price, user_id))
+            await db.execute("UPDATE coins SET balance=balance-? WHERE user_id=?", (price, user_id))
             await db.execute(
                 "INSERT OR REPLACE INTO premium (user_id,tier,expires) VALUES (?,?,?)",
                 (user_id, tier, expires)
             )
-
-            if self.coupon.value:
-                await db.execute("UPDATE coupons SET used=used+1 WHERE code=?", (self.coupon.value,))
-
             await db.execute(
                 "INSERT INTO payments (invoice_id,user_id,rupees,coins,timestamp) VALUES (?,?,?,?,?)",
-                (f"INV-{int(time.time())}", user_id, 0, final_price, int(time.time()))
+                (f"PSG-{int(time.time())}", user_id, 0, price, int(time.time()))
             )
             await db.commit()
 
@@ -106,17 +85,29 @@ class BuyPremiumModal(discord.ui.Modal):
         if role:
             await interaction.user.add_roles(role)
 
-        embed = discord.Embed(title="🧾 Invoice", color=discord.Color.gold())
-        embed.add_field(name="Name", value=self.name.value)
-        embed.add_field(name="Tier", value=tier.capitalize())
-        embed.add_field(name="Coins Paid", value=str(final_price))
-        embed.add_field(name="Duration", value=f"{DAYS[tier]} days")
-        embed.set_image(url=INVOICE_GIF_URL)
-
-        await interaction.followup.send(
-            embed=embed,
-            view=RefundView(user_id, tier, final_price)
+        # Invoice Embed
+        embed = discord.Embed(
+            title="👑 PSG FAMILY\nOfficial Payment Invoice",
+            color=discord.Color.gold()
         )
+        embed.set_thumbnail(url=LOGO_URL)
+
+        embed.add_field(name="🆔 Invoice ID", value=f"PSG-{int(time.time())}", inline=True)
+        embed.add_field(name="📅 Date", value=time.strftime("%d / %m / %Y"), inline=True)
+        embed.add_field(name="👤 Customer Name", value=self.name.value, inline=False)
+
+        embed.add_field(name="━━━━━━━━ Payment Details ━━━━━━━━", value="\u200b", inline=False)
+        embed.add_field(name="💰 Paid Amount", value=f"{price} Coins", inline=True)
+        embed.add_field(name="⭐ Premium Tier", value=f"{tier.capitalize()} ({DAYS[tier]} Days)", inline=True)
+
+        embed.add_field(name="✅ Payment Status", value="🟢 PAID", inline=True)
+        embed.add_field(name="✍ Authorized By", value="PSG FAMILY", inline=True)
+        embed.add_field(name="🖊 Signature", value="Kingofmyqueen", inline=True)
+
+        embed.set_footer(text="Thank you for your support!")
+        embed.set_image(url=INVOICE_BG)
+
+        await interaction.followup.send(embed=embed, view=RefundView(user_id, tier, price))
 
 
 # ================= REFUND VIEW =================
@@ -127,11 +118,7 @@ class RefundView(discord.ui.View):
         self.tier = tier
         self.coins = coins
 
-    @discord.ui.button(
-        label="🔁 Refund",
-        style=discord.ButtonStyle.danger,
-        custom_id="coinshop_refund_btn"
-    )
+    @discord.ui.button(label="🔁 Refund", style=discord.ButtonStyle.danger, custom_id="coinshop_refund")
     async def refund(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not interaction.user.guild_permissions.administrator:
             return await interaction.response.send_message("❌ Admin only.", ephemeral=True)
@@ -164,32 +151,33 @@ class CoinShop(commands.Cog):
         self.expiry_task.start()
 
     # PANEL
-    @app_commands.command(name="coin_shop_panel", description="Create premium coin shop panel")
+    @app_commands.command(name="coin_shop_panel", description="Create PSG Family coin shop panel")
     async def coin_shop_panel(self, interaction: discord.Interaction, channel: discord.TextChannel):
-        await interaction.response.defer(ephemeral=True)
-
         if not interaction.user.guild_permissions.administrator:
-            return await interaction.followup.send("❌ Admin only.")
+            return await interaction.response.send_message("❌ Admin only.", ephemeral=True)
 
         embed = discord.Embed(
-            title="💎 Premium Coin Shop",
+            title="👑 PSG FAMILY\nOfficial Premium & Coin Shop",
             description=(
-                "🥉 Bronze – 100 coins (3 days)\n"
-                "🥈 Silver – 200 coins (5 days)\n"
-                "🥇 Gold – 300 coins (7 days)\n\n"
-                "Select a tier below to buy Premium."
+                "🥉 **Bronze** – 100 Coins (3 Days)\n"
+                "🥈 **Silver** – 200 Coins (5 Days)\n"
+                "🥇 **Gold** – 300 Coins (7 Days)\n\n"
+                "💱 Conversion: `₹2 = 6 PSG Coins`\n\n"
+                "Select your Premium Tier below to generate invoice & buy.\n\n"
+                "**Thank you for supporting PSG FAMILY ❤️**"
             ),
-            color=discord.Color.blue()
+            color=discord.Color.gold()
         )
 
+        embed.set_thumbnail(url=LOGO_URL)
+        embed.set_footer(text="PSG FAMILY • Official Payment System")
+
         await channel.send(embed=embed, view=CoinShopView())
-        await interaction.followup.send("✅ Coin shop panel created.")
+        await interaction.response.send_message("✅ Coin shop panel created.", ephemeral=True)
 
     # HISTORY
-    @app_commands.command(name="coin_shop_history", description="View your purchase history")
+    @app_commands.command(name="coin_shop_history", description="View your coin shop history")
     async def coin_shop_history(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-
         async with aiosqlite.connect(DB_NAME) as db:
             async with db.execute(
                 "SELECT invoice_id,coins,timestamp FROM payments WHERE user_id=?",
@@ -198,14 +186,14 @@ class CoinShop(commands.Cog):
                 rows = await cur.fetchall()
 
         if not rows:
-            return await interaction.followup.send("❌ No purchase history.")
+            return await interaction.response.send_message("❌ No history.", ephemeral=True)
 
-        msg = ""
+        text = ""
         for inv, coins, ts in rows:
-            msg += f"🧾 `{inv}` → {coins} coins at <t:{ts}:R>\n"
+            text += f"🧾 `{inv}` → {coins} coins at <t:{ts}:R>\n"
 
-        embed = discord.Embed(title="📜 Coin Shop History", description=msg, color=discord.Color.green())
-        await interaction.followup.send(embed=embed)
+        embed = discord.Embed(title="📜 Coin Shop History", description=text, color=discord.Color.green())
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # AUTO EXPIRY
     @tasks.loop(minutes=1)
@@ -235,6 +223,5 @@ class CoinShop(commands.Cog):
 
 # ================= SETUP =================
 async def setup(bot):
-    bot.add_view(CoinShopView())   # persistent view
-    bot.add_view(RefundView(0, "bronze", 0))
+    bot.add_view(CoinShopView())  # persistent view
     await bot.add_cog(CoinShop(bot))
