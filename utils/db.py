@@ -5,16 +5,12 @@ DB_NAME = "bot.db"
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
 
-        # =================================================
-        # SQLITE SAFETY PRAGMAS
-        # =================================================
+        # ================= SQLITE SAFETY =================
         await db.execute("PRAGMA journal_mode=WAL;")
         await db.execute("PRAGMA synchronous=NORMAL;")
         await db.execute("PRAGMA foreign_keys=ON;")
 
-        # =================================================
-        # COINS / ECONOMY
-        # =================================================
+        # ================= COINS =================
         await db.execute("""
         CREATE TABLE IF NOT EXISTS coins (
             user_id INTEGER PRIMARY KEY,
@@ -22,9 +18,7 @@ async def init_db():
         )
         """)
 
-        # =================================================
-        # PREMIUM SYSTEM
-        # =================================================
+        # ================= PREMIUM =================
         await db.execute("""
         CREATE TABLE IF NOT EXISTS premium (
             user_id INTEGER PRIMARY KEY,
@@ -33,68 +27,7 @@ async def init_db():
         )
         """)
 
-        # =================================================
-        # LEVELS / XP
-        # =================================================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS levels (
-            user_id INTEGER,
-            guild_id INTEGER,
-            xp INTEGER DEFAULT 0,
-            level INTEGER DEFAULT 1,
-            PRIMARY KEY (user_id, guild_id)
-        )
-        """)
-
-        # =================================================
-        # THEMES
-        # =================================================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS user_themes (
-            user_id INTEGER PRIMARY KEY,
-            theme TEXT DEFAULT 'default'
-        )
-        """)
-
-        # =================================================
-        # TICKETS (MAIN)
-        # =================================================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS tickets (
-            channel_id INTEGER PRIMARY KEY,
-            user_id INTEGER,
-            claimed_by INTEGER,
-            category TEXT,
-            created_at INTEGER
-        )
-        """)
-
-        # =================================================
-        # TICKET COOLDOWNS
-        # =================================================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS ticket_cooldowns (
-            user_id INTEGER PRIMARY KEY,
-            last_created INTEGER
-        )
-        """)
-
-        # =================================================
-        # TICKET TRANSCRIPTS
-        # =================================================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS ticket_transcripts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_id INTEGER,
-            author_id INTEGER,
-            message TEXT,
-            timestamp INTEGER
-        )
-        """)
-
-        # =================================================
-        # PAYMENTS / INVOICES
-        # =================================================
+        # ================= PAYMENTS / INVOICES =================
         await db.execute("""
         CREATE TABLE IF NOT EXISTS payments (
             invoice_id TEXT PRIMARY KEY,
@@ -105,25 +38,74 @@ async def init_db():
         )
         """)
 
-        # =================================================
-        # GUILD SETTINGS
-        # =================================================
+        # ================= LEVELS =================
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS levels (
+            user_id INTEGER,
+            guild_id INTEGER,
+            xp INTEGER DEFAULT 0,
+            level INTEGER DEFAULT 1,
+            PRIMARY KEY (user_id, guild_id)
+        )
+        """)
+
+        # ================= THEMES =================
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS user_themes (
+            user_id INTEGER PRIMARY KEY,
+            theme TEXT DEFAULT 'default'
+        )
+        """)
+
+        # ================= GUILD SETTINGS =================
         await db.execute("""
         CREATE TABLE IF NOT EXISTS guild_settings (
             guild_id INTEGER PRIMARY KEY,
             welcome_channel INTEGER,
             welcome_role INTEGER,
             goodbye_channel INTEGER,
-            modlog_channel INTEGER,
-            welcome_message TEXT,
-            welcome_bg TEXT,
-            welcome_mode TEXT
+            modlog_channel INTEGER
         )
         """)
 
-        # =================================================
-        # WARNINGS / MODERATION
-        # =================================================
+        # ---- SAFE ADD NEW COLUMNS ----
+        for column in ["welcome_message", "welcome_bg", "welcome_mode"]:
+            try:
+                await db.execute(f"ALTER TABLE guild_settings ADD COLUMN {column} TEXT")
+            except aiosqlite.OperationalError:
+                pass
+
+        # ================= TICKETS =================
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS tickets (
+            channel_id INTEGER PRIMARY KEY,
+            user_id INTEGER,
+            claimed_by INTEGER,
+            category TEXT,
+            created_at INTEGER
+        )
+        """)
+
+        # ================= TICKET COOLDOWNS =================
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS ticket_cooldowns (
+            user_id INTEGER PRIMARY KEY,
+            last_created INTEGER
+        )
+        """)
+
+        # ================= TRANSCRIPTS =================
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS ticket_transcripts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id INTEGER,
+            author_id INTEGER,
+            message TEXT,
+            timestamp INTEGER
+        )
+        """)
+
+        # ================= WARNINGS =================
         await db.execute("""
         CREATE TABLE IF NOT EXISTS warnings (
             user_id INTEGER,
@@ -133,24 +115,20 @@ async def init_db():
         )
         """)
 
-        # =================================================
-        # YOUTUBE ALERTS
-        # =================================================
+        # ================= YOUTUBE ALERTS =================
         await db.execute("""
         CREATE TABLE IF NOT EXISTS youtube_alerts (
-         guild_id INTEGER,
-         youtube_channel TEXT,
-         discord_channel INTEGER,
-         role_id INTEGER,
-         message TEXT,
-         last_video TEXT,
-         PRIMARY KEY (guild_id, youtube_channel)
-    )
+            guild_id INTEGER,
+            youtube_channel TEXT,
+            discord_channel INTEGER,
+            role_id INTEGER,
+            message TEXT,
+            last_video TEXT,
+            PRIMARY KEY (guild_id, youtube_channel)
+        )
         """)
 
-        # =================================================
-        # COUPONS
-        # =================================================
+        # ================= COUPONS =================
         await db.execute("""
         CREATE TABLE IF NOT EXISTS coupons (
             code TEXT PRIMARY KEY,
@@ -163,3 +141,4 @@ async def init_db():
         """)
 
         await db.commit()
+        print("✅ Database checked & updated")
