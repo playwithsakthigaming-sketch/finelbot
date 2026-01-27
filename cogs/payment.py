@@ -2,7 +2,6 @@ import discord
 import aiosqlite
 import time
 import random
-import requests
 import os
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
@@ -11,21 +10,22 @@ from discord import app_commands
 
 DB_NAME = "bot.db"
 
+# ================= CONFIG =================
 UPI_ID = "psgfamily@upi"
 RUPEE_RATE = 2
 COINS_PER_RATE = 6
 
 LOGO_URL = "https://cdn.discordapp.com/attachments/1415142396341256275/1463808464840294463/1000068286-removebg-preview.png"
-INVOICE_BG_URL = "https://files.catbox.moe/r09xpx.png"
 
 PAYMENT_CATEGORY = "Payments"
 
-# ================= FONT =================
-FONT_PATH = os.path.join("fonts", "CinzelDecorative-Bold.ttf")
+INVOICE_BG_PATH = "assets/invoice_bg.png"
+FONT_PATH = "fonts/CinzelDecorative-Bold.ttf"
 
+# ================= FONT =================
 def get_font(size: int):
     if not os.path.exists(FONT_PATH):
-        raise FileNotFoundError(f"❌ Font not found: {FONT_PATH}")
+        raise FileNotFoundError(f"Font not found: {FONT_PATH}")
     return ImageFont.truetype(FONT_PATH, size)
 
 # ================= INVOICE CONFIG =================
@@ -41,13 +41,12 @@ INVOICE_TEXT_CONFIG = {
 
 # ================= BACKGROUND =================
 def load_invoice_background():
-    W, H = 1280, 1024
+    W, H = 1000, 800
     try:
-        r = requests.get(INVOICE_BG_URL, timeout=15)
-        bg = Image.open(BytesIO(r.content)).convert("RGB")
+        bg = Image.open(INVOICE_BG_PATH).convert("RGB")
         return bg.resize((W, H))
     except Exception as e:
-        print("BG load error:", e)
+        print("❌ BG load error:", e)
         return Image.new("RGB", (W, H), (30,30,30))
 
 # ================= INVOICE GENERATOR =================
@@ -94,7 +93,7 @@ def generate_invoice(username, rupees, coins):
     draw.text((500,740),
               "Payment Status: PAID",
               font=get_font(30),
-              fill="green")
+              fill=(0,255,0))
 
     buf = BytesIO()
     img.save(buf, "PNG")
@@ -138,8 +137,11 @@ class PaymentPanelView(discord.ui.View):
         )
 
         await channel.send(embed=embed, view=PaymentCloseView())
-        await interaction.response.send_message(f"✅ Ticket created: {channel.mention}", ephemeral=True)
+        await interaction.response.send_message(
+            f"✅ Payment ticket created: {channel.mention}", ephemeral=True
+        )
 
+# ================= CLOSE VIEW =================
 class PaymentCloseView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -197,7 +199,9 @@ class Payment(commands.Cog):
     @app_commands.command(name="invoice_preview")
     async def invoice_preview(self, interaction: discord.Interaction):
         img = generate_invoice(interaction.user.name, 100, 300)
-        await interaction.response.send_message(file=discord.File(img, "preview.png"), ephemeral=True)
+        await interaction.response.send_message(
+            file=discord.File(img, "preview.png"), ephemeral=True
+        )
 
     @app_commands.command(name="invoice_edit")
     async def invoice_edit(self, interaction: discord.Interaction, field: str, x: int, y: int, size: int):
