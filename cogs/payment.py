@@ -32,7 +32,7 @@ def get_font(size: int):
 SHOW_GRID = False
 
 INVOICE_TEXT_CONFIG = {
-    "invoice_id": {"x":152,"y":600,"fontSize":27},
+    "invoice_id": {"x":152,"y":525,"fontSize":27},
     "date": {"x":675,"y":600,"fontSize":25},
     "customer": {"x":152,"y":668,"fontSize":23},
     "paid_amount": {"x":152,"y":725,"fontSize":22},
@@ -88,7 +88,7 @@ def generate_invoice(username, rupees, coins):
     draw.text((cfg["coin_credit"]["x"], cfg["coin_credit"]["y"]),
               f"Coins Credited: {coins}",
               font=get_font(cfg["coin_credit"]["fontSize"]),
-              fill="white")
+              fill="red")
 
     buf = BytesIO()
     img.save(buf, "PNG")
