@@ -3,6 +3,7 @@ import aiosqlite
 import time
 import random
 import requests
+import os
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 from discord.ext import commands
@@ -20,23 +21,52 @@ INVOICE_BG_URL = "https://files.catbox.moe/yslxzu.png"
 
 PAYMENT_CATEGORY = "Payments"
 
+# ================= FONT SYSTEM =================
+FONT_FOLDER = "fonts"
+
+FONTS = {
+    "bold": "DejaVuSans-Bold.ttf",
+    "regular": "DejaVuSans.ttf",
+    "fancy": "Montserrat-Bold.ttf",
+    "tamil": "NotoSansTamil-Regular.ttf"
+}
+
+FONT_URLS = {
+    "bold": "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/version_2_37/ttf/DejaVuSans-Bold.ttf",
+    "regular": "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/version_2_37/ttf/DejaVuSans.ttf",
+    "fancy": "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Bold.ttf",
+    "tamil": "https://github.com/google/fonts/raw/main/ofl/notosanstamil/NotoSansTamil-Regular.ttf"
+}
+
+CURRENT_FONT = "bold"
+
+def ensure_fonts():
+    os.makedirs(FONT_FOLDER, exist_ok=True)
+    for name, url in FONT_URLS.items():
+        path = os.path.join(FONT_FOLDER, FONTS[name])
+        if not os.path.exists(path):
+            print(f"⬇ Downloading font: {name}")
+            r = requests.get(url, timeout=20)
+            r.raise_for_status()
+            with open(path, "wb") as f:
+                f.write(r.content)
+
+def get_font(size: int):
+    ensure_fonts()
+    font_file = FONTS.get(CURRENT_FONT, FONTS["bold"])
+    path = os.path.join(FONT_FOLDER, font_file)
+    return ImageFont.truetype(path, size)
+
 # ================= INVOICE DESIGN =================
 SHOW_GRID = False
 
 INVOICE_TEXT_CONFIG = {
     "invoice_id": {"x":140,"y":430,"z":1,"fontSize":32},
-    "date": {"x":680,"y":430,"z":1,"fontSize":3002},
+    "date": {"x":680,"y":430,"z":1,"fontSize":32},
     "customer": {"x":140,"y":500,"z":1,"fontSize":30},
     "paid_amount": {"x":140,"y":600,"z":1,"fontSize":30},
     "coin_credit": {"x":140,"y":670,"z":1,"fontSize":30}
 }
-
-# ================= FONT =================
-def get_font(size):
-    try:
-        return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
-    except:
-        return ImageFont.load_default()
 
 # ================= SAFE BACKGROUND LOAD =================
 def load_invoice_background():
@@ -45,15 +75,13 @@ def load_invoice_background():
         headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(INVOICE_BG_URL, headers=headers, timeout=15)
         r.raise_for_status()
-
         bg = Image.open(BytesIO(r.content)).convert("RGB")
         return bg.resize((W, H))
-
     except Exception as e:
         print("❌ Invoice BG load failed:", e)
         img = Image.new("RGB", (W, H), (20, 20, 20))
         draw = ImageDraw.Draw(img)
-        draw.text((400, 300), "INVOICE", fill=(255,255,255))
+        draw.text((400, 300), "INVOICE", fill=(255,255,255), font=get_font(40))
         return img
 
 # ================= INVOICE GENERATOR =================
@@ -107,7 +135,7 @@ def generate_invoice(username, rupees, coins):
               fill=green)
 
     buf = BytesIO()
-    img.save(buf,"PNG")
+    img.save(buf, "PNG")
     buf.seek(0)
     return buf
 
@@ -230,8 +258,21 @@ class Payment(commands.Cog):
         INVOICE_TEXT_CONFIG[field] = {"x":x,"y":y,"z":1,"fontSize":size}
         await interaction.response.send_message(f"✅ Updated `{field}` position.", ephemeral=True)
 
+    @app_commands.command(name="invoice_font", description="Change invoice font style")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def invoice_font(self, interaction: discord.Interaction, style: str):
+        global CURRENT_FONT
+        if style not in FONTS:
+            return await interaction.response.send_message(
+                "❌ Choose: bold / regular / fancy / tamil",
+                ephemeral=True
+            )
+        CURRENT_FONT = style
+        await interaction.response.send_message(f"✅ Invoice font set to **{style}**", ephemeral=True)
+
 # ================= SETUP =================
 async def setup(bot: commands.Bot):
+    ensure_fonts()
     bot.add_view(PaymentPanelView())
     bot.add_view(PaymentCloseView())
     await bot.add_cog(Payment(bot))
