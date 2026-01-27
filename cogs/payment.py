@@ -41,7 +41,7 @@ INVOICE_TEXT_CONFIG = {
 
 # ================= BACKGROUND =================
 def load_invoice_background():
-    W, H = 1000, 800
+    W, H = 1280, 1024
     try:
         r = requests.get(INVOICE_BG_URL, timeout=15)
         bg = Image.open(BytesIO(r.content)).convert("RGB")
