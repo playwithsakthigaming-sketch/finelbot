@@ -32,11 +32,11 @@ def get_font(size: int):
 SHOW_GRID = False
 
 INVOICE_TEXT_CONFIG = {
-    "invoice_id": {"x":200,"y":580,"fontSize":25},
-    "date": {"x":750,"y":520,"fontSize":25},
-    "customer": {"x":200,"y":650,"fontSize":20},
-    "paid_amount": {"x":200,"y":720,"fontSize":22},
-    "coin_credit": {"x":200,"y":790,"fontSize":22}
+    "invoice_id": {"x":152,"y":600,"fontSize":25},
+    "date": {"x":675,"y":230,"fontSize":25},
+    "customer": {"x":152,"y":668,"fontSize":23},
+    "paid_amount": {"x":152,"y":725,"fontSize":22},
+    "coin_credit": {"x":152,"y":795,"fontSize":22}
 }
 
 # ================= BACKGROUND =================
@@ -88,12 +88,7 @@ def generate_invoice(username, rupees, coins):
     draw.text((cfg["coin_credit"]["x"], cfg["coin_credit"]["y"]),
               f"Coins Credited: {coins}",
               font=get_font(cfg["coin_credit"]["fontSize"]),
-              fill="white")
-
-    draw.text((500,740),
-              "Payment Status: PAID",
-              font=get_font(30),
-              fill=(0,255,0))
+              fill="white"))
 
     buf = BytesIO()
     img.save(buf, "PNG")
