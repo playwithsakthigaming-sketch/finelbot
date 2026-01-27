@@ -24,11 +24,11 @@ PAYMENT_CATEGORY = "Payments"
 SHOW_GRID = False
 
 INVOICE_TEXT_CONFIG = {
-    "invoice_id": {"x":140,"y":430,"z":1,"fontSize":32},
-    "date": {"x":680,"y":430,"z":1,"fontSize":32},
-    "customer": {"x":140,"y":500,"z":1,"fontSize":30},
-    "paid_amount": {"x":140,"y":600,"z":1,"fontSize":30},
-    "coin_credit": {"x":140,"y":670,"z":1,"fontSize":30}
+    "invoice_id": {"x":140,"y":430,"z":1,"fontSize":132},
+    "date": {"x":680,"y":430,"z":1,"fontSize":132},
+    "customer": {"x":140,"y":500,"z":1,"fontSize":130},
+    "paid_amount": {"x":140,"y":600,"z":1,"fontSize":130},
+    "coin_credit": {"x":140,"y":670,"z":1,"fontSize":130}
 }
 
 # ================= FONT =================
