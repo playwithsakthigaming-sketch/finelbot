@@ -3,6 +3,7 @@ import aiosqlite
 import time
 import random
 import requests
+import os
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 from discord.ext import commands
@@ -20,6 +21,23 @@ INVOICE_BG_URL = "https://files.catbox.moe/r09xpx.png"
 
 PAYMENT_CATEGORY = "Payments"
 
+# ================= FONT AUTO DOWNLOAD =================
+FONT_FILE = "DejaVuSans-Bold.ttf"
+FONT_URL = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans-Bold.ttf"
+
+def ensure_font():
+    if not os.path.exists(FONT_FILE):
+        print("⬇ Downloading font...")
+        r = requests.get(FONT_URL, timeout=15)
+        r.raise_for_status()
+        with open(FONT_FILE, "wb") as f:
+            f.write(r.content)
+        print("✅ Font downloaded")
+
+def get_font(size: int):
+    ensure_font()
+    return ImageFont.truetype(FONT_FILE, size)
+
 # ================= INVOICE DESIGN =================
 SHOW_GRID = False
 
@@ -31,14 +49,6 @@ INVOICE_TEXT_CONFIG = {
     "coin_credit": {"x":140,"y":670,"z":1,"fontSize":30}
 }
 
-# ================= FONT (FIXED) =================
-def get_font(size: int):
-    try:
-        return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
-    except Exception as e:
-        print("⚠ Font load error:", e)
-        return ImageFont.load_default()
-
 # ================= SAFE BACKGROUND LOAD =================
 def load_invoice_background():
     W, H = 1280, 1024
@@ -46,10 +56,8 @@ def load_invoice_background():
         headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(INVOICE_BG_URL, headers=headers, timeout=15)
         r.raise_for_status()
-
         bg = Image.open(BytesIO(r.content)).convert("RGB")
         return bg.resize((W, H))
-
     except Exception as e:
         print("❌ Invoice BG load failed:", e)
         img = Image.new("RGB", (W, H), (20, 20, 20))
@@ -108,7 +116,7 @@ def generate_invoice(username, rupees, coins):
               fill=green)
 
     buf = BytesIO()
-    img.save(buf,"PNG")
+    img.save(buf, "PNG")
     buf.seek(0)
     return buf
 
@@ -149,7 +157,9 @@ class PaymentPanelView(discord.ui.View):
         )
 
         await channel.send(embed=embed, view=PaymentCloseView())
-        await interaction.response.send_message(f"✅ Payment ticket created: {channel.mention}", ephemeral=True)
+        await interaction.response.send_message(
+            f"✅ Payment ticket created: {channel.mention}", ephemeral=True
+        )
 
 # ================= CLOSE BUTTON =================
 class PaymentCloseView(discord.ui.View):
@@ -159,7 +169,9 @@ class PaymentCloseView(discord.ui.View):
     @discord.ui.button(label="🔒 Close Ticket", style=discord.ButtonStyle.danger, custom_id="payment_close")
     async def close_ticket(self, interaction: discord.Interaction, _):
         if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("❌ Only admin can close this ticket.", ephemeral=True)
+            return await interaction.response.send_message(
+                "❌ Only admin can close this ticket.", ephemeral=True
+            )
         await interaction.channel.delete()
 
 # ================= PAYMENT COG =================
@@ -191,20 +203,34 @@ class Payment(commands.Cog):
         coins = (rupees // RUPEE_RATE) * COINS_PER_RATE
 
         async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("INSERT OR IGNORE INTO coins (user_id,balance) VALUES (?,0)", (member.id,))
-            await db.execute("UPDATE coins SET balance = balance + ? WHERE user_id=?", (coins, member.id))
+            await db.execute(
+                "INSERT OR IGNORE INTO coins (user_id,balance) VALUES (?,0)",
+                (member.id,)
+            )
+            await db.execute(
+                "UPDATE coins SET balance = balance + ? WHERE user_id=?",
+                (coins, member.id)
+            )
             await db.commit()
 
         invoice = generate_invoice(member.name, rupees, coins)
 
-        await interaction.channel.send("🧾 **Payment Confirmed**", file=discord.File(invoice, "invoice.png"))
+        await interaction.channel.send(
+            "🧾 **Payment Confirmed**",
+            file=discord.File(invoice, "invoice.png")
+        )
 
         try:
-            await member.send("🧾 **Your PSG Invoice**", file=discord.File(invoice, "invoice.png"))
+            await member.send(
+                "🧾 **Your PSG Invoice**",
+                file=discord.File(invoice, "invoice.png")
+            )
         except:
             pass
 
-        await interaction.followup.send(f"✅ Added {coins} coins to {member.mention}")
+        await interaction.followup.send(
+            f"✅ Added {coins} coins to {member.mention}"
+        )
 
     @app_commands.command(name="invoice_preview", description="Preview invoice layout")
     @app_commands.checks.has_permissions(administrator=True)
@@ -218,7 +244,9 @@ class Payment(commands.Cog):
     async def invoice_grid(self, interaction: discord.Interaction, show: bool):
         global SHOW_GRID
         SHOW_GRID = show
-        await interaction.response.send_message(f"✅ Invoice grid set to {show}", ephemeral=True)
+        await interaction.response.send_message(
+            f"✅ Invoice grid set to {show}", ephemeral=True
+        )
 
     @app_commands.command(name="invoice_edit", description="Edit invoice text position")
     @app_commands.checks.has_permissions(administrator=True)
@@ -228,11 +256,15 @@ class Payment(commands.Cog):
                 "❌ Field must be: invoice_id / date / customer / paid_amount / coin_credit",
                 ephemeral=True
             )
+
         INVOICE_TEXT_CONFIG[field] = {"x":x,"y":y,"z":1,"fontSize":size}
-        await interaction.response.send_message(f"✅ Updated `{field}` position.", ephemeral=True)
+        await interaction.response.send_message(
+            f"✅ Updated `{field}` position.", ephemeral=True
+        )
 
 # ================= SETUP =================
 async def setup(bot: commands.Bot):
+    ensure_font()
     bot.add_view(PaymentPanelView())
     bot.add_view(PaymentCloseView())
     await bot.add_cog(Payment(bot))
