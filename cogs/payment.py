@@ -23,7 +23,7 @@ PAYMENT_CATEGORY = "Payments"
 
 # ================= FONT AUTO DOWNLOAD =================
 FONT_FILE = "DejaVuSans-Bold.ttf"
-FONT_URL = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans-Bold.ttf"
+FONT_URL = "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/master/ttf/DejaVuSans-Bold.ttf"
 
 def ensure_font():
     if not os.path.exists(FONT_FILE):
