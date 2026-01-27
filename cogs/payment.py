@@ -32,16 +32,16 @@ def get_font(size: int):
 SHOW_GRID = False
 
 INVOICE_TEXT_CONFIG = {
-    "invoice_id": {"x":140,"y":430,"fontSize":32},
-    "date": {"x":680,"y":430,"fontSize":32},
-    "customer": {"x":140,"y":500,"fontSize":30},
-    "paid_amount": {"x":140,"y":600,"fontSize":30},
-    "coin_credit": {"x":140,"y":670,"fontSize":30}
+    "invoice_id": {"x":200,"y":580,"fontSize":25},
+    "date": {"x":750,"y":520,"fontSize":25},
+    "customer": {"x":200,"y":650,"fontSize":20},
+    "paid_amount": {"x":200,"y":720,"fontSize":22},
+    "coin_credit": {"x":200,"y":790,"fontSize":22}
 }
 
 # ================= BACKGROUND =================
 def load_invoice_background():
-    W, H = 1000, 800
+    W, H = 1080, 1080
     try:
         bg = Image.open(INVOICE_BG_PATH).convert("RGB")
         return bg.resize((W, H))
