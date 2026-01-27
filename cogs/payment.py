@@ -88,7 +88,7 @@ def generate_invoice(username, rupees, coins):
     draw.text((cfg["coin_credit"]["x"], cfg["coin_credit"]["y"]),
               f"Coins Credited: {coins}",
               font=get_font(cfg["coin_credit"]["fontSize"]),
-              fill="white"))
+              fill="white")
 
     buf = BytesIO()
     img.save(buf, "PNG")
