@@ -16,7 +16,7 @@ RUPEE_RATE = 2
 COINS_PER_RATE = 6
 
 LOGO_URL = "https://cdn.discordapp.com/attachments/1415142396341256275/1463808464840294463/1000068286-removebg-preview.png"
-INVOICE_BG_URL = "https://files.catbox.moe/yslxzu.png"
+INVOICE_BG_URL = "https://files.catbox.moe/r09xpx.png"
 
 PAYMENT_CATEGORY = "Payments"
 
@@ -24,10 +24,11 @@ PAYMENT_CATEGORY = "Payments"
 SHOW_GRID = False
 
 INVOICE_TEXT_CONFIG = {
-    "username": [150, 320, 26],
-    "amount": [150, 370, 26],
-    "coins": [150, 420, 26],
-    "status": [150, 470, 26]
+    "invoice_id": {"x":140,"y":430,"z":1,"fontSize":32},
+    "date": {"x":680,"y":430,"z":1,"fontSize":32},
+    "customer": {"x":140,"y":500,"z":1,"fontSize":30},
+    "paid_amount": {"x":140,"y":600,"z":1,"fontSize":30},
+    "coin_credit": {"x":140,"y":670,"z":1,"fontSize":30}
 }
 
 # ================= FONT =================
@@ -39,7 +40,7 @@ def get_font(size):
 
 # ================= SAFE BACKGROUND LOAD =================
 def load_invoice_background():
-    W, H = 1000, 650
+    W, H = 1280, 1024
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(INVOICE_BG_URL, headers=headers, timeout=15)
@@ -66,31 +67,44 @@ def generate_invoice(username, rupees, coins):
 
     if SHOW_GRID:
         for x in range(0,1000,50):
-            draw.line((x,0,x,650),(40,40,40))
-        for y in range(0,650,50):
+            draw.line((x,0,x,800),(40,40,40))
+        for y in range(0,800,50):
             draw.line((0,y,1000,y),(40,40,40))
 
     invoice_id = f"PSG-{random.randint(10000,99999)}"
     date = time.strftime("%d/%m/%Y")
 
-    draw.text((150,260), f"Invoice ID: {invoice_id}", font=get_font(24), fill=gold)
-    draw.text((700,260), f"Date: {date}", font=get_font(24), fill=gold)
+    cfg = INVOICE_TEXT_CONFIG
 
-    draw.text((INVOICE_TEXT_CONFIG["username"][0], INVOICE_TEXT_CONFIG["username"][1]),
-              f"Customer: {username}", font=get_font(INVOICE_TEXT_CONFIG["username"][2]), fill=white)
+    draw.text((cfg["invoice_id"]["x"], cfg["invoice_id"]["y"]),
+              f"Invoice ID: {invoice_id}",
+              font=get_font(cfg["invoice_id"]["fontSize"]),
+              fill=gold)
 
-    draw.text((INVOICE_TEXT_CONFIG["amount"][0], INVOICE_TEXT_CONFIG["amount"][1]),
-              f"Paid Amount: ₹{rupees}", font=get_font(INVOICE_TEXT_CONFIG["amount"][2]), fill=white)
+    draw.text((cfg["date"]["x"], cfg["date"]["y"]),
+              f"Date: {date}",
+              font=get_font(cfg["date"]["fontSize"]),
+              fill=gold)
 
-    draw.text((INVOICE_TEXT_CONFIG["coins"][0], INVOICE_TEXT_CONFIG["coins"][1]),
-              f"Coins Credited: {coins}", font=get_font(INVOICE_TEXT_CONFIG["coins"][2]), fill=white)
+    draw.text((cfg["customer"]["x"], cfg["customer"]["y"]),
+              f"Customer: {username}",
+              font=get_font(cfg["customer"]["fontSize"]),
+              fill=white)
 
-    draw.text((INVOICE_TEXT_CONFIG["status"][0], INVOICE_TEXT_CONFIG["status"][1]),
-              "Payment Status: PAID", font=get_font(INVOICE_TEXT_CONFIG["status"][2]), fill=green)
+    draw.text((cfg["paid_amount"]["x"], cfg["paid_amount"]["y"]),
+              f"Paid Amount: ₹{rupees}",
+              font=get_font(cfg["paid_amount"]["fontSize"]),
+              fill=white)
 
-    draw.text((550,520),"Authorized By: PSG FAMILY",font=get_font(22),fill=gold)
-    draw.text((750,520),"Kingofmyqueen",font=get_font(24),fill=gold)
-    draw.text((350,610),"Thank you for your support!",font=get_font(26),fill=gold)
+    draw.text((cfg["coin_credit"]["x"], cfg["coin_credit"]["y"]),
+              f"Coins Credited: {coins}",
+              font=get_font(cfg["coin_credit"]["fontSize"]),
+              fill=white)
+
+    draw.text((550, 740),
+              "Payment Status: PAID",
+              font=get_font(30),
+              fill=green)
 
     buf = BytesIO()
     img.save(buf,"PNG")
@@ -210,12 +224,11 @@ class Payment(commands.Cog):
     async def invoice_edit(self, interaction: discord.Interaction, field: str, x: int, y: int, size: int):
         if field not in INVOICE_TEXT_CONFIG:
             return await interaction.response.send_message(
-                "❌ Field must be: username / amount / coins / status",
+                "❌ Field must be: invoice_id / date / customer / paid_amount / coin_credit",
                 ephemeral=True
             )
-
-        INVOICE_TEXT_CONFIG[field] = [x, y, size]
-        await interaction.response.send_message(f"✅ Updated `{field}`", ephemeral=True)
+        INVOICE_TEXT_CONFIG[field] = {"x":x,"y":y,"z":1,"fontSize":size}
+        await interaction.response.send_message(f"✅ Updated `{field}` position.", ephemeral=True)
 
 # ================= SETUP =================
 async def setup(bot: commands.Bot):
