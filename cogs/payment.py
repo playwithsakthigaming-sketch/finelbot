@@ -17,18 +17,18 @@ RUPEE_RATE = 2
 COINS_PER_RATE = 6
 
 LOGO_URL = "https://cdn.discordapp.com/attachments/1415142396341256275/1463808464840294463/1000068286-removebg-preview.png"
-INVOICE_BG_URL = "https://files.catbox.moe/r09xpx.png"
+INVOICE_BG_URL = "https://files.catbox.moe/yslxzu.png"
 
 PAYMENT_CATEGORY = "Payments"
 
-# ================= FONT AUTO DOWNLOAD =================
+# ================= FONT AUTO DOWNLOAD (FIXED URL) =================
 FONT_FILE = "DejaVuSans-Bold.ttf"
-FONT_URL = "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/master/ttf/DejaVuSans-Bold.ttf"
+FONT_URL = "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/version_2_37/ttf/DejaVuSans-Bold.ttf"
 
 def ensure_font():
     if not os.path.exists(FONT_FILE):
         print("⬇ Downloading font...")
-        r = requests.get(FONT_URL, timeout=15)
+        r = requests.get(FONT_URL, timeout=20)
         r.raise_for_status()
         with open(FONT_FILE, "wb") as f:
             f.write(r.content)
@@ -51,7 +51,7 @@ INVOICE_TEXT_CONFIG = {
 
 # ================= SAFE BACKGROUND LOAD =================
 def load_invoice_background():
-    W, H = 1280, 1024
+    W, H = 1000, 800
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(INVOICE_BG_URL, headers=headers, timeout=15)
