@@ -32,6 +32,7 @@ COGS = [
     "cogs.payment",
     "cogs.coin_shop",
     "cogs.announce",
+    "cogs.help",
     "cogs.moderation",
     "cogs.coupons",
     "cogs.backup",
