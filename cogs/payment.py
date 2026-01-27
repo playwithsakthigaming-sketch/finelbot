@@ -32,8 +32,6 @@ FONTS = {
 }
 
 FONT_URLS = {
-    "bold": "https://github.com/dejavu-fonts/dejavu-fonts",
-    "regular": "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/version_2_37/ttf/DejaVuSans.ttf",
     "fancy": "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Bold.ttf",
     "tamil": "https://github.com/google/fonts/raw/main/ofl/notosanstamil/NotoSansTamil-Regular.ttf"
 }
