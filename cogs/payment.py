@@ -21,34 +21,32 @@ INVOICE_BG_URL = "https://files.catbox.moe/yslxzu.png"
 
 PAYMENT_CATEGORY = "Payments"
 
-# ================= FONT SYSTEM =================
+# ================= FONT SYSTEM (CINZEL) =================
 FONT_FOLDER = "fonts"
 
 FONTS = {
-    "montserrat": "Montserrat-Bold.ttf",
-    "bold": "DejaVuSans-Bold.ttf",
-    "tamil": "NotoSansTamil-Regular.ttf"
+    "cinzel": "CinzelDecorative-Bold.ttf"
 }
 
-CURRENT_FONT = "montserrat"  # default font
+CURRENT_FONT = "cinzel"
 
 def get_font(size: int):
-    font_file = FONTS.get(CURRENT_FONT, FONTS["montserrat"])
-    path = os.path.join(FONT_FOLDER, font_file)
     try:
+        path = os.path.join(FONT_FOLDER, FONTS[CURRENT_FONT])
         return ImageFont.truetype(path, size)
-    except:
+    except Exception as e:
+        print("Font load error:", e)
         return ImageFont.load_default()
 
 # ================= INVOICE DESIGN =================
 SHOW_GRID = False
 
 INVOICE_TEXT_CONFIG = {
-    "invoice_id": {"x":140,"y":430,"fontSize":77},
-    "date": {"x":680,"y":430,"fontSize":77},
-    "customer": {"x":140,"y":500,"fontSize":77},
-    "paid_amount": {"x":140,"y":600,"fontSize":77},
-    "coin_credit": {"x":140,"y":670,"fontSize":77}
+    "invoice_id": {"x":140,"y":430,"fontSize":32},
+    "date": {"x":680,"y":430,"fontSize":32},
+    "customer": {"x":140,"y":500,"fontSize":30},
+    "paid_amount": {"x":140,"y":600,"fontSize":30},
+    "coin_credit": {"x":140,"y":670,"fontSize":30}
 }
 
 # ================= BACKGROUND =================
@@ -79,21 +77,28 @@ def generate_invoice(username, rupees, coins):
     cfg = INVOICE_TEXT_CONFIG
 
     draw.text((cfg["invoice_id"]["x"], cfg["invoice_id"]["y"]),
-              f"Invoice ID: {invoice_id}", font=get_font(cfg["invoice_id"]["fontSize"]), fill="white")
+              f"Invoice ID: {invoice_id}",
+              font=get_font(cfg["invoice_id"]["fontSize"]), fill="white")
 
     draw.text((cfg["date"]["x"], cfg["date"]["y"]),
-              f"Date: {date}", font=get_font(cfg["date"]["fontSize"]), fill="white")
+              f"Date: {date}",
+              font=get_font(cfg["date"]["fontSize"]), fill="white")
 
     draw.text((cfg["customer"]["x"], cfg["customer"]["y"]),
-              f"Customer: {username}", font=get_font(cfg["customer"]["fontSize"]), fill="white")
+              f"Customer: {username}",
+              font=get_font(cfg["customer"]["fontSize"]), fill="white")
 
     draw.text((cfg["paid_amount"]["x"], cfg["paid_amount"]["y"]),
-              f"Paid Amount: ₹{rupees}", font=get_font(cfg["paid_amount"]["fontSize"]), fill="white")
+              f"Paid Amount: ₹{rupees}",
+              font=get_font(cfg["paid_amount"]["fontSize"]), fill="white")
 
     draw.text((cfg["coin_credit"]["x"], cfg["coin_credit"]["y"]),
-              f"Coins Credited: {coins}", font=get_font(cfg["coin_credit"]["fontSize"]), fill="white")
+              f"Coins Credited: {coins}",
+              font=get_font(cfg["coin_credit"]["fontSize"]), fill="white")
 
-    draw.text((500, 740), "Payment Status: PAID", font=get_font(30), fill="green")
+    draw.text((500, 740),
+              "Payment Status: PAID",
+              font=get_font(30), fill="green")
 
     buf = BytesIO()
     img.save(buf, "PNG")
@@ -137,7 +142,9 @@ class PaymentPanelView(discord.ui.View):
         )
 
         await channel.send(embed=embed, view=PaymentCloseView())
-        await interaction.response.send_message(f"✅ Payment ticket created: {channel.mention}", ephemeral=True)
+        await interaction.response.send_message(
+            f"✅ Payment ticket created: {channel.mention}", ephemeral=True
+        )
 
 # ================= CLOSE VIEW =================
 class PaymentCloseView(discord.ui.View):
@@ -147,7 +154,9 @@ class PaymentCloseView(discord.ui.View):
     @discord.ui.button(label="🔒 Close Ticket", style=discord.ButtonStyle.danger, custom_id="payment_close")
     async def close_ticket(self, interaction: discord.Interaction, _):
         if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("❌ Only admin can close.", ephemeral=True)
+            return await interaction.response.send_message(
+                "❌ Only admin can close.", ephemeral=True
+            )
         await interaction.channel.delete()
 
 # ================= PAYMENT COG =================
@@ -179,16 +188,28 @@ class Payment(commands.Cog):
         coins = (rupees // RUPEE_RATE) * COINS_PER_RATE
 
         async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("INSERT OR IGNORE INTO coins (user_id,balance) VALUES (?,0)", (member.id,))
-            await db.execute("UPDATE coins SET balance = balance + ? WHERE user_id=?", (coins, member.id))
+            await db.execute(
+                "INSERT OR IGNORE INTO coins (user_id,balance) VALUES (?,0)",
+                (member.id,)
+            )
+            await db.execute(
+                "UPDATE coins SET balance = balance + ? WHERE user_id=?",
+                (coins, member.id)
+            )
             await db.commit()
 
         invoice = generate_invoice(member.name, rupees, coins)
 
-        await interaction.channel.send("🧾 **Payment Confirmed**", file=discord.File(invoice, "invoice.png"))
+        await interaction.channel.send(
+            "🧾 **Payment Confirmed**",
+            file=discord.File(invoice, "invoice.png")
+        )
 
         try:
-            await member.send("🧾 **Your PSG Invoice**", file=discord.File(invoice, "invoice.png"))
+            await member.send(
+                "🧾 **Your PSG Invoice**",
+                file=discord.File(invoice, "invoice.png")
+            )
         except:
             pass
 
@@ -198,7 +219,9 @@ class Payment(commands.Cog):
     @app_commands.checks.has_permissions(administrator=True)
     async def invoice_preview(self, interaction: discord.Interaction):
         img = generate_invoice(interaction.user.name, 100, 300)
-        await interaction.response.send_message(file=discord.File(img, "preview.png"), ephemeral=True)
+        await interaction.response.send_message(
+            file=discord.File(img, "preview.png"), ephemeral=True
+        )
 
     @app_commands.command(name="invoice_grid", description="Toggle invoice grid")
     @app_commands.checks.has_permissions(administrator=True)
@@ -223,9 +246,14 @@ class Payment(commands.Cog):
     async def invoice_font(self, interaction: discord.Interaction, style: str):
         global CURRENT_FONT
         if style not in FONTS:
-            return await interaction.response.send_message("❌ Choose: montserrat / bold / tamil", ephemeral=True)
+            return await interaction.response.send_message(
+                "❌ Available font: cinzel",
+                ephemeral=True
+            )
         CURRENT_FONT = style
-        await interaction.response.send_message(f"✅ Font set to {style}", ephemeral=True)
+        await interaction.response.send_message(
+            "✅ Invoice font changed to **Cinzel Decorative**", ephemeral=True
+        )
 
 # ================= SETUP =================
 async def setup(bot: commands.Bot):
