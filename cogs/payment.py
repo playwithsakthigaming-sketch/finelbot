@@ -24,18 +24,19 @@ PAYMENT_CATEGORY = "Payments"
 SHOW_GRID = False
 
 INVOICE_TEXT_CONFIG = {
-    "invoice_id": {"x":140,"y":430,"z":1,"fontSize":132},
-    "date": {"x":680,"y":430,"z":1,"fontSize":132},
-    "customer": {"x":140,"y":500,"z":1,"fontSize":130},
-    "paid_amount": {"x":140,"y":600,"z":1,"fontSize":130},
-    "coin_credit": {"x":140,"y":670,"z":1,"fontSize":130}
+    "invoice_id": {"x":140,"y":430,"z":1,"fontSize":32},
+    "date": {"x":680,"y":430,"z":1,"fontSize":32},
+    "customer": {"x":140,"y":500,"z":1,"fontSize":30},
+    "paid_amount": {"x":140,"y":600,"z":1,"fontSize":30},
+    "coin_credit": {"x":140,"y":670,"z":1,"fontSize":30}
 }
 
-# ================= FONT =================
-def get_font(size):
+# ================= FONT (FIXED) =================
+def get_font(size: int):
     try:
-        return ImageFont.truetype("arial.ttf", size)
-    except:
+        return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
+    except Exception as e:
+        print("⚠ Font load error:", e)
         return ImageFont.load_default()
 
 # ================= SAFE BACKGROUND LOAD =================
@@ -53,7 +54,7 @@ def load_invoice_background():
         print("❌ Invoice BG load failed:", e)
         img = Image.new("RGB", (W, H), (20, 20, 20))
         draw = ImageDraw.Draw(img)
-        draw.text((400, 300), "INVOICE", fill=(255,255,255))
+        draw.text((400, 300), "INVOICE", fill=(255,255,255), font=get_font(40))
         return img
 
 # ================= INVOICE GENERATOR =================
