@@ -68,7 +68,7 @@ def generate_invoice(username, rupees, coins):
     draw.text((cfg["invoice_id"]["x"], cfg["invoice_id"]["y"]),
               f"Invoice ID: {invoice_id}",
               font=get_font(cfg["invoice_id"]["fontSize"]),
-              fill="white")
+              fill="gold")
 
     draw.text((cfg["date"]["x"], cfg["date"]["y"]),
               f"Date: {date}",
