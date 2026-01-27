@@ -5,3 +5,4 @@ Pillow
 requests
 yt-dlp
 PyNaCl
+discord.py
