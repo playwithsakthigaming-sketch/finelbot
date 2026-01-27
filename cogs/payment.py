@@ -4,76 +4,82 @@ import time
 import random
 import requests
 from io import BytesIO
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from discord.ext import commands
 from discord import app_commands
+
+DB_NAME = "bot.db"
 
 # =========================================================
 # CONFIG
 # =========================================================
 UPI_ID = "psgfamily@upi"
-RUPEE_RATE = 2          # ₹2
-COINS_PER_RATE = 6      # = 6 coins
+RUPEE_RATE = 2
+COINS_PER_RATE = 6
+
 LOGO_URL = "https://cdn.discordapp.com/attachments/1415142396341256275/1463808464840294463/1000068286-removebg-preview.png"
+
+INVOICE_BG_URL = "PUT_YOUR_UPLOADED_IMAGE_URL_HERE"
+SHOW_GRID = False   # True for design alignment
+
 PAYMENT_CATEGORY = "Payments"
-DB_NAME = "bot.db"
 
 # =========================================================
-# INVOICE GENERATOR (PSG STYLE)
+# FONT HELPER
+# =========================================================
+def get_font(size):
+    try:
+        return ImageFont.truetype("arial.ttf", size)
+    except:
+        return ImageFont.load_default()
+
+# =========================================================
+# INVOICE GENERATOR
 # =========================================================
 def generate_invoice(username: str, rupees: int, coins: int):
-    width, height = 1000, 650
-    img = Image.new("RGB", (width, height), (10, 10, 10))
+    bg = Image.open(BytesIO(requests.get(INVOICE_BG_URL).content)).convert("RGB")
+    img = bg.resize((1000, 650))
     draw = ImageDraw.Draw(img)
 
     gold = (255, 200, 60)
     white = (255, 255, 255)
+    green = (0, 255, 0)
 
-    # Load logo
-    try:
-        logo = Image.open(BytesIO(requests.get(LOGO_URL).content)).resize((120, 120))
-        img.paste(logo, (440, 20), logo if logo.mode == "RGBA" else None)
-    except:
-        pass
+    # ================= GRID =================
+    if SHOW_GRID:
+        for x in range(0, 1000, 50):
+            draw.line((x, 0, x, 650), fill=(40, 40, 40))
+        for y in range(0, 650, 50):
+            draw.line((0, y, 1000, y), fill=(40, 40, 40))
 
     invoice_id = f"PSG-{random.randint(10000,99999)}"
     date = time.strftime("%d / %m / %Y")
 
-    # Titles
-    draw.text((380, 160), "PSG FAMILY", fill=gold)
-    draw.text((320, 200), "Official Payment Invoice", fill=gold)
+    # ================= TEXT LAYOUT =================
+    texts = [
+        (f"Invoice ID: {invoice_id}", 150, 260, 24, gold),
+        (f"Date: {date}", 700, 260, 24, gold),
 
-    # Boxes
-    draw.rectangle((80, 260, 920, 300), outline=gold, width=2)
-    draw.rectangle((80, 300, 920, 350), outline=gold, width=2)
-    draw.rectangle((80, 350, 920, 400), outline=gold, width=2)
-    draw.rectangle((80, 400, 920, 450), outline=gold, width=2)
-    draw.rectangle((80, 450, 920, 500), outline=gold, width=2)
-    draw.rectangle((80, 500, 920, 550), outline=gold, width=2)
+        (f"Customer Name: {username}", 150, 320, 26, white),
+        (f"Paid Amount: ₹{rupees}", 150, 370, 26, white),
+        (f"Coin Credit: {coins} PSG Coins", 150, 420, 26, white),
 
-    draw.text((100, 270), f"Invoice ID: {invoice_id}", fill=white)
-    draw.text((650, 270), f"Date: {date}", fill=white)
+        ("Payment Status: PAID", 150, 470, 26, green),
+        ("Payment Method: UPI", 700, 470, 22, white),
 
-    draw.text((100, 320), f"Customer Name: {username}", fill=white)
+        ("Authorized By: PSG FAMILY", 550, 520, 22, gold),
+        ("Kingofmyqueen", 750, 520, 24, gold),
 
-    draw.text((100, 370), "Payment Details", fill=gold)
+        ("Thank you for your support!", 350, 610, 26, gold)
+    ]
 
-    draw.text((100, 420), f"Paid Amount: ₹{rupees}", fill=white)
-    draw.text((100, 470), f"Coin Credit: {coins} PSG Coins", fill=white)
-
-    draw.text((100, 520), "Payment Status:", fill=white)
-    draw.text((300, 520), "PAID", fill=(0, 255, 0))
-
-    draw.text((600, 520), "Authorized By: PSG FAMILY", fill=white)
-    draw.text((600, 560), "Signature: Kingofmyqueen", fill=gold)
-
-    draw.text((380, 610), "Thank you for your support!", fill=gold)
+    for text, x, y, size, color in texts:
+        draw.text((x, y), text, font=get_font(size), fill=color)
 
     buf = BytesIO()
     img.save(buf, "PNG")
     buf.seek(0)
     return buf
-
 
 # =========================================================
 # PAYMENT PANEL VIEW
@@ -82,8 +88,12 @@ class PaymentPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="💰 Buy Coins", style=discord.ButtonStyle.success, custom_id="payment_buy")
-    async def buy(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(
+        label="💰 Buy Coins",
+        style=discord.ButtonStyle.success,
+        custom_id="payment_buy"
+    )
+    async def buy(self, interaction: discord.Interaction, _):
         guild = interaction.guild
 
         category = discord.utils.get(guild.categories, name=PAYMENT_CATEGORY)
@@ -116,7 +126,6 @@ class PaymentPanelView(discord.ui.View):
             ephemeral=True
         )
 
-
 # =========================================================
 # PAYMENT COG
 # =========================================================
@@ -139,16 +148,25 @@ class Payment(commands.Cog):
             ),
             color=discord.Color.gold()
         )
+        embed.set_thumbnail(url=LOGO_URL)
 
         await interaction.channel.send(embed=embed, view=PaymentPanelView())
-        await interaction.response.send_message("✅ Payment panel created.", ephemeral=True)
+        await interaction.response.send_message(
+            "✅ Payment panel created.",
+            ephemeral=True
+        )
 
     # -----------------------------------------------------
     # /confirm_payment
     # -----------------------------------------------------
     @app_commands.command(name="confirm_payment", description="✅ Confirm payment & add coins")
     @app_commands.checks.has_permissions(administrator=True)
-    async def confirm_payment(self, interaction: discord.Interaction, member: discord.Member, rupees: int):
+    async def confirm_payment(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        rupees: int
+    ):
         if rupees <= 0:
             return await interaction.response.send_message("❌ Invalid amount.", ephemeral=True)
 
@@ -185,10 +203,9 @@ class Payment(commands.Cog):
             ephemeral=True
         )
 
-
 # =========================================================
 # SETUP
 # =========================================================
 async def setup(bot: commands.Bot):
-    bot.add_view(PaymentPanelView())  # persistent buttons
+    bot.add_view(PaymentPanelView())
     await bot.add_cog(Payment(bot))
