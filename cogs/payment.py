@@ -31,11 +31,6 @@ FONTS = {
     "tamil": "NotoSansTamil-Regular.ttf"
 }
 
-FONT_URLS = {
-    "fancy": "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Bold.ttf",
-    "tamil": "https://github.com/google/fonts/raw/main/ofl/notosanstamil/NotoSansTamil-Regular.ttf"
-}
-
 CURRENT_FONT = "bold"
 
 def ensure_fonts():
