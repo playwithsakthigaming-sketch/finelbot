@@ -19,8 +19,8 @@ COINS_PER_RATE = 6
 
 LOGO_URL = "https://cdn.discordapp.com/attachments/1415142396341256275/1463808464840294463/1000068286-removebg-preview.png"
 
-INVOICE_BG_URL = "PUT_YOUR_UPLOADED_IMAGE_URL_HERE"
-SHOW_GRID = False   # True for design alignment
+INVOICE_BG_URL = "https://files.catbox.moe/yslxzu.png"
+SHOW_GRID = False   # True for alignment testing
 
 PAYMENT_CATEGORY = "Payments"
 
@@ -45,7 +45,7 @@ def generate_invoice(username: str, rupees: int, coins: int):
     white = (255, 255, 255)
     green = (0, 255, 0)
 
-    # ================= GRID =================
+    # ================= GRID (optional) =================
     if SHOW_GRID:
         for x in range(0, 1000, 50):
             draw.line((x, 0, x, 650), fill=(40, 40, 40))
@@ -157,7 +157,7 @@ class Payment(commands.Cog):
         )
 
     # -----------------------------------------------------
-    # /confirm_payment
+    # /confirm_payment (FIXED)
     # -----------------------------------------------------
     @app_commands.command(name="confirm_payment", description="✅ Confirm payment & add coins")
     @app_commands.checks.has_permissions(administrator=True)
@@ -167,11 +167,15 @@ class Payment(commands.Cog):
         member: discord.Member,
         rupees: int
     ):
+        # ✅ prevent timeout
+        await interaction.response.defer(ephemeral=True)
+
         if rupees <= 0:
-            return await interaction.response.send_message("❌ Invalid amount.", ephemeral=True)
+            return await interaction.followup.send("❌ Invalid amount.")
 
         coins = (rupees // RUPEE_RATE) * COINS_PER_RATE
 
+        # ================= DATABASE =================
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute(
                 "INSERT OR IGNORE INTO coins (user_id, balance) VALUES (?,0)",
@@ -183,13 +187,16 @@ class Payment(commands.Cog):
             )
             await db.commit()
 
+        # ================= GENERATE INVOICE =================
         invoice = generate_invoice(member.name, rupees, coins)
 
+        # Send invoice in channel
         await interaction.channel.send(
             content="🧾 **Payment Confirmed**",
             file=discord.File(invoice, "invoice.png")
         )
 
+        # Send invoice in DM
         try:
             await member.send(
                 "🧾 **Your PSG Family Invoice**",
@@ -198,10 +205,21 @@ class Payment(commands.Cog):
         except:
             pass
 
-        await interaction.response.send_message(
-            f"✅ Added **{coins} PSG Coins** to {member.mention}",
-            ephemeral=True
+        # Final response
+        await interaction.followup.send(
+            f"✅ Added **{coins} PSG Coins** to {member.mention}"
         )
+
+    # -----------------------------------------------------
+    # ERROR HANDLER
+    # -----------------------------------------------------
+    @confirm_payment.error
+    async def confirm_payment_error(self, interaction: discord.Interaction, error):
+        if interaction.response.is_done():
+            await interaction.followup.send(f"❌ Error: {error}", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"❌ Error: {error}", ephemeral=True)
+
 
 # =========================================================
 # SETUP
