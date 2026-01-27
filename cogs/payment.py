@@ -16,7 +16,7 @@ RUPEE_RATE = 2
 COINS_PER_RATE = 6
 
 LOGO_URL = "https://cdn.discordapp.com/attachments/1415142396341256275/1463808464840294463/1000068286-removebg-preview.png"
-INVOICE_BG_URL = "https://files.catbox.moe/yslxzu.png"
+INVOICE_BG_URL = "https://files.catbox.moe/r09xpx.png"
 
 PAYMENT_CATEGORY = "Payments"
 
