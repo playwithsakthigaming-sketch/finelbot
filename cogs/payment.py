@@ -34,7 +34,7 @@ INVOICE_TEXT_CONFIG = {
 # ================= FONT =================
 def get_font(size):
     try:
-        return ImageFont.truetype("sans-serif.ttf", size)
+        return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
     except:
         return ImageFont.load_default()
 
