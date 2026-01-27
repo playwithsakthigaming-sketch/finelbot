@@ -16,10 +16,19 @@ RUPEE_RATE = 2
 COINS_PER_RATE = 6
 
 LOGO_URL = "https://cdn.discordapp.com/attachments/1415142396341256275/1463808464840294463/1000068286-removebg-preview.png"
-INVOICE_BG_URL = "PUT_YOUR_INVOICE_BACKGROUND_IMAGE_URL_HERE"
+INVOICE_BG_URL = "https://files.catbox.moe/yslxzu.png"
 
 PAYMENT_CATEGORY = "Payments"
-SHOW_GRID = True  # True for alignment test
+
+# ================= INVOICE DESIGN CONFIG =================
+SHOW_GRID = False
+
+INVOICE_TEXT_CONFIG = {
+    "username": [150, 320, 26],
+    "amount": [150, 370, 26],
+    "coins": [150, 420, 26],
+    "status": [150, 470, 26]
+}
 
 # ================= FONT =================
 def get_font(size):
@@ -28,7 +37,7 @@ def get_font(size):
     except:
         return ImageFont.load_default()
 
-# ================= SAFE BG =================
+# ================= SAFE BACKGROUND =================
 def load_invoice_background():
     W, H = 1000, 650
     try:
@@ -39,7 +48,7 @@ def load_invoice_background():
         print("⚠ BG load failed:", e)
         return Image.new("RGB", (W, H), (15, 15, 15))
 
-# ================= INVOICE =================
+# ================= INVOICE GENERATOR =================
 def generate_invoice(username, rupees, coins):
     img = load_invoice_background()
     draw = ImageDraw.Draw(img)
@@ -57,20 +66,24 @@ def generate_invoice(username, rupees, coins):
     invoice_id = f"PSG-{random.randint(10000,99999)}"
     date = time.strftime("%d/%m/%Y")
 
-    texts = [
-        (f"Invoice ID: {invoice_id}",150,260,24,gold),
-        (f"Date: {date}",700,260,24,gold),
-        (f"Customer: {username}",150,320,26,white),
-        (f"Paid Amount: ₹{rupees}",150,370,26,white),
-        (f"Coins Credited: {coins}",150,420,26,white),
-        ("Payment Status: PAID",150,470,26,green),
-        ("Authorized By: PSG FAMILY",550,520,22,gold),
-        ("Kingofmyqueen",750,520,24,gold),
-        ("Thank you for your support!",350,610,26,gold)
-    ]
+    draw.text((150,260), f"Invoice ID: {invoice_id}", font=get_font(24), fill=gold)
+    draw.text((700,260), f"Date: {date}", font=get_font(24), fill=gold)
 
-    for text,x,y,size,color in texts:
-        draw.text((x,y),text,font=get_font(size),fill=color)
+    draw.text(tuple(INVOICE_TEXT_CONFIG["username"][:2]),
+              f"Customer: {username}", font=get_font(INVOICE_TEXT_CONFIG["username"][2]), fill=white)
+
+    draw.text(tuple(INVOICE_TEXT_CONFIG["amount"][:2]),
+              f"Paid Amount: ₹{rupees}", font=get_font(INVOICE_TEXT_CONFIG["amount"][2]), fill=white)
+
+    draw.text(tuple(INVOICE_TEXT_CONFIG["coins"][:2]),
+              f"Coins Credited: {coins}", font=get_font(INVOICE_TEXT_CONFIG["coins"][2]), fill=white)
+
+    draw.text(tuple(INVOICE_TEXT_CONFIG["status"][:2]),
+              "Payment Status: PAID", font=get_font(INVOICE_TEXT_CONFIG["status"][2]), fill=green)
+
+    draw.text((550,520),"Authorized By: PSG FAMILY",font=get_font(22),fill=gold)
+    draw.text((750,520),"Kingofmyqueen",font=get_font(24),fill=gold)
+    draw.text((350,610),"Thank you for your support!",font=get_font(26),fill=gold)
 
     buf = BytesIO()
     img.save(buf,"PNG")
@@ -85,7 +98,6 @@ class PaymentPanelView(discord.ui.View):
     @discord.ui.button(label="💰 Buy Coins", style=discord.ButtonStyle.success, custom_id="payment_buy")
     async def buy(self, interaction: discord.Interaction, _):
         guild = interaction.guild
-
         category = discord.utils.get(guild.categories, name=PAYMENT_CATEGORY)
         if not category:
             category = await guild.create_category(PAYMENT_CATEGORY)
@@ -125,10 +137,7 @@ class PaymentCloseView(discord.ui.View):
     @discord.ui.button(label="🔒 Close Ticket", style=discord.ButtonStyle.danger, custom_id="payment_close")
     async def close_ticket(self, interaction: discord.Interaction, _):
         if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message(
-                "❌ Only admin can close this ticket.", ephemeral=True
-            )
-
+            return await interaction.response.send_message("❌ Only admin can close this ticket.", ephemeral=True)
         await interaction.response.send_message("🔒 Closing ticket...", ephemeral=True)
         await interaction.channel.delete()
 
@@ -137,6 +146,7 @@ class Payment(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    # ---------- PANEL ----------
     @app_commands.command(name="payment_panel", description="Create payment panel")
     @app_commands.checks.has_permissions(administrator=True)
     async def payment_panel(self, interaction: discord.Interaction):
@@ -146,10 +156,10 @@ class Payment(commands.Cog):
             color=discord.Color.gold()
         )
         embed.set_thumbnail(url=LOGO_URL)
-
         await interaction.channel.send(embed=embed, view=PaymentPanelView())
         await interaction.response.send_message("✅ Payment panel created.", ephemeral=True)
 
+    # ---------- CONFIRM ----------
     @app_commands.command(name="confirm_payment", description="Confirm payment & add coins")
     @app_commands.checks.has_permissions(administrator=True)
     async def confirm_payment(self, interaction: discord.Interaction, member: discord.Member, rupees: int):
@@ -175,6 +185,38 @@ class Payment(commands.Cog):
             pass
 
         await interaction.followup.send(f"✅ Added {coins} coins to {member.mention}")
+
+    # ---------- GRID ----------
+    @app_commands.command(name="invoice_grid", description="Toggle invoice grid")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def invoice_grid(self, interaction: discord.Interaction, show: bool):
+        global SHOW_GRID
+        SHOW_GRID = show
+        await interaction.response.send_message(f"✅ Invoice grid set to {show}", ephemeral=True)
+
+    # ---------- EDIT ----------
+    @app_commands.command(name="invoice_edit", description="Edit invoice text position")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def invoice_edit(self, interaction: discord.Interaction, field: str, x: int, y: int, size: int):
+        if field not in INVOICE_TEXT_CONFIG:
+            return await interaction.response.send_message(
+                "❌ Field must be: username / amount / coins / status",
+                ephemeral=True
+            )
+
+        INVOICE_TEXT_CONFIG[field] = [x, y, size]
+        await interaction.response.send_message(
+            f"✅ Updated `{field}` → x={x}, y={y}, size={size}",
+            ephemeral=True
+        )
+
+    # ---------- PREVIEW ----------
+    @app_commands.command(name="invoice_preview", description="Preview invoice layout")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def invoice_preview(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        img = generate_invoice(interaction.user.name, 100, 300)
+        await interaction.followup.send(file=discord.File(img, "preview.png"))
 
 # ================= SETUP =================
 async def setup(bot: commands.Bot):
