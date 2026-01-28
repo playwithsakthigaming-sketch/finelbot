@@ -1,143 +1,180 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import aiohttp, io, aiosqlite
-from PIL import Image, ImageDraw, ImageFont
+import aiosqlite
+import os
+from PIL import Image, ImageDraw, ImageFont, ImageSequence
+from io import BytesIO
 
 DB_NAME = "bot.db"
 
-DEFAULT_BG = "https://i.imgur.com/zvWTUVu.png"  # change if you want
+FONT_PATH = "fonts/CinzelDecorative-Bold.ttf"
+DEFAULT_BG = "assets/welcome_bg.png"
 
+# ================= IMAGE GENERATOR =================
+def get_font(size):
+    return ImageFont.truetype(FONT_PATH, size)
 
+def generate_welcome_image(member: discord.Member, message: str, bg_path: str):
+    bg = Image.open(bg_path)
+
+    frames = []
+    is_gif = getattr(bg, "is_animated", False)
+
+    for frame in ImageSequence.Iterator(bg) if is_gif else [bg]:
+        frame = frame.convert("RGBA").resize((900, 400))
+        draw = ImageDraw.Draw(frame)
+
+        # User avatar
+        avatar_asset = member.display_avatar.with_size(128)
+        avatar_bytes = avatar_asset.read()
+        avatar = Image.open(BytesIO(avatar_bytes)).resize((120,120)).convert("RGBA")
+        frame.paste(avatar, (40, 140), avatar)
+
+        # Server logo
+        if member.guild.icon:
+            icon_asset = member.guild.icon.with_size(128)
+            icon_bytes = icon_asset.read()
+            icon = Image.open(BytesIO(icon_bytes)).resize((80,80)).convert("RGBA")
+            frame.paste(icon, (780, 20), icon)
+
+        text = message.format(user=member.name, server=member.guild.name)
+        draw.text((200, 160), text, font=get_font(32), fill="white")
+
+        frames.append(frame)
+
+    buf = BytesIO()
+    if is_gif:
+        frames[0].save(
+            buf,
+            format="GIF",
+            save_all=True,
+            append_images=frames[1:],
+            duration=bg.info.get("duration", 100),
+            loop=0
+        )
+    else:
+        frames[0].save(buf, format="PNG")
+
+    buf.seek(0)
+    return buf, ("GIF" if is_gif else "PNG")
+
+# ================= COG =================
 class Welcome(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # ================= SETUP COMMAND =================
-    @app_commands.command(name="set_welcome", description="Setup welcome system")
-    @app_commands.describe(
-        channel="Welcome channel",
-        role="Auto role",
-        message="Welcome message (use {user})",
-        background_url="Background image URL (optional)"
-    )
-    async def set_welcome(
+    # ---------------- SETUP ----------------
+    @app_commands.command(name="welcome_setup", description="Setup welcome system")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def welcome_setup(
         self,
         interaction: discord.Interaction,
         channel: discord.TextChannel,
         role: discord.Role,
         message: str,
-        background_url: str = None
+        mode: str,
+        bg_path: str = DEFAULT_BG
     ):
-        if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("❌ Admin only.", ephemeral=True)
-
-        await interaction.response.defer(ephemeral=True)
-
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("""
-                INSERT OR REPLACE INTO guild_settings
-                (guild_id, welcome_channel, welcome_role, welcome_message, welcome_bg, welcome_mode)
-                VALUES (?,?,?,?,?,?)
+            INSERT OR REPLACE INTO guild_settings
+            (guild_id, welcome_channel, welcome_role, welcome_message, welcome_bg, welcome_mode)
+            VALUES (?, ?, ?, ?, ?, ?)
             """, (
                 interaction.guild.id,
                 channel.id,
                 role.id,
                 message,
-                background_url,
-                "image"
+                bg_path,
+                mode
             ))
             await db.commit()
 
-        await interaction.followup.send("✅ Welcome system updated.")
+        await interaction.response.send_message("✅ Welcome system configured!", ephemeral=True)
 
-    # ================= MEMBER JOIN =================
+    # ---------------- PREVIEW ----------------
+    @app_commands.command(name="welcome_preview", description="Preview welcome message")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def welcome_preview(self, interaction: discord.Interaction):
+        async with aiosqlite.connect(DB_NAME) as db:
+            cursor = await db.execute("""
+            SELECT welcome_message, welcome_bg, welcome_mode
+            FROM guild_settings WHERE guild_id=?
+            """, (interaction.guild.id,))
+            row = await cursor.fetchone()
+
+        if not row:
+            return await interaction.response.send_message("❌ Welcome not configured.", ephemeral=True)
+
+        message, bg_path, mode = row
+
+        if mode == "image":
+            img, fmt = generate_welcome_image(interaction.user, message, bg_path or DEFAULT_BG)
+            await interaction.response.send_message(
+                file=discord.File(img, f"welcome_preview.{fmt.lower()}"),
+                ephemeral=True
+            )
+
+        elif mode == "embed":
+            embed = discord.Embed(
+                title="🎉 Welcome Preview",
+                description=message.format(user=interaction.user.mention, server=interaction.guild.name),
+                color=discord.Color.green()
+            )
+            embed.set_thumbnail(url=interaction.user.display_avatar.url)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        else:
+            await interaction.response.send_message(
+                message.format(user=interaction.user.mention, server=interaction.guild.name),
+                ephemeral=True
+            )
+
+    # ---------------- MEMBER JOIN ----------------
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         async with aiosqlite.connect(DB_NAME) as db:
-            async with db.execute("""
-                SELECT welcome_channel, welcome_role, welcome_message, welcome_bg
-                FROM guild_settings WHERE guild_id=?
-            """, (member.guild.id,)) as cursor:
-                data = await cursor.fetchone()
+            cursor = await db.execute("""
+            SELECT welcome_channel, welcome_role, welcome_message, welcome_bg, welcome_mode
+            FROM guild_settings WHERE guild_id=?
+            """, (member.guild.id,))
+            row = await cursor.fetchone()
 
-        if not data:
+        if not row:
             return
 
-        channel_id, role_id, message, bg_url = data
-
+        channel_id, role_id, message, bg_path, mode = row
         channel = member.guild.get_channel(channel_id)
-        role = member.guild.get_role(role_id)
-
-        if not channel:
-            return
 
         # Auto role
+        role = member.guild.get_role(role_id)
         if role:
             await member.add_roles(role)
 
-        # Generate image
-        image = await self.generate_welcome_image(member, bg_url)
-
-        file = discord.File(image, filename="welcome.png")
-
-        embed = discord.Embed(
-            title="🎉 Welcome!",
-            description=message.replace("{user}", member.mention),
-            color=discord.Color.green()
-        )
-
-        embed.set_image(url="attachment://welcome.png")
-
-        # Server logo top right
-        if member.guild.icon:
-            embed.set_thumbnail(url=member.guild.icon.url)
-
-        await channel.send(embed=embed, file=file)
-
-    # ================= IMAGE GENERATOR =================
-    async def generate_welcome_image(self, member: discord.Member, bg_url: str):
-        if not bg_url:
-            bg_url = DEFAULT_BG
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(bg_url) as resp:
-                bg_bytes = await resp.read()
-
-            async with session.get(member.display_avatar.url) as resp:
-                avatar_bytes = await resp.read()
-
-            if member.guild.icon:
-                async with session.get(member.guild.icon.url) as resp:
-                    logo_bytes = await resp.read()
-            else:
-                logo_bytes = None
-
-        bg = Image.open(io.BytesIO(bg_bytes)).resize((800, 300)).convert("RGBA")
-        avatar = Image.open(io.BytesIO(avatar_bytes)).resize((150, 150)).convert("RGBA")
-
-        # Paste avatar LEFT
-        bg.paste(avatar, (30, 75))
-
-        # Paste server logo TOP RIGHT
-        if logo_bytes:
-            logo = Image.open(io.BytesIO(logo_bytes)).resize((100, 100)).convert("RGBA")
-            bg.paste(logo, (670, 20), logo)
-
-        draw = ImageDraw.Draw(bg)
-
+        # DM welcome
         try:
-            font = ImageFont.truetype("arial.ttf", 40)
+            await member.send(f"👋 Welcome to {member.guild.name}!")
         except:
-            font = ImageFont.load_default()
+            pass
 
-        draw.text((220, 120), f"Welcome {member.name}!", font=font, fill="white")
+        if mode == "image":
+            img, fmt = generate_welcome_image(member, message, bg_path or DEFAULT_BG)
+            await channel.send(file=discord.File(img, f"welcome.{fmt.lower()}"))
 
-        buffer = io.BytesIO()
-        bg.save(buffer, format="PNG")
-        buffer.seek(0)
-        return buffer
+        elif mode == "embed":
+            embed = discord.Embed(
+                title="🎉 Welcome!",
+                description=message.format(user=member.mention, server=member.guild.name),
+                color=discord.Color.green()
+            )
+            embed.set_thumbnail(url=member.display_avatar.url)
+            embed.set_footer(text=f"Member #{member.guild.member_count}")
+            await channel.send(embed=embed)
 
+        else:
+            await channel.send(message.format(user=member.mention, server=member.guild.name))
 
-async def setup(bot):
+# ================= SETUP =================
+async def setup(bot: commands.Bot):
     await bot.add_cog(Welcome(bot))
