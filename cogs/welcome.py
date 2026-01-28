@@ -11,11 +11,14 @@ DB_NAME = "bot.db"
 FONT_PATH = "fonts/CinzelDecorative-Bold.ttf"
 DEFAULT_BG = "assets/welcome_bg.png"
 
-# ================= IMAGE GENERATOR =================
+# ================= FONT =================
 def get_font(size):
+    if not os.path.exists(FONT_PATH):
+        raise FileNotFoundError(f"Font not found: {FONT_PATH}")
     return ImageFont.truetype(FONT_PATH, size)
 
-def generate_welcome_image(member: discord.Member, message: str, bg_path: str):
+# ================= IMAGE GENERATOR =================
+async def generate_welcome_image(member: discord.Member, message: str, bg_path: str):
     bg = Image.open(bg_path)
 
     frames = []
@@ -27,14 +30,14 @@ def generate_welcome_image(member: discord.Member, message: str, bg_path: str):
 
         # User avatar
         avatar_asset = member.display_avatar.with_size(128)
-        avatar_bytes = avatar_asset.read()
+        avatar_bytes = await avatar_asset.read()
         avatar = Image.open(BytesIO(avatar_bytes)).resize((120,120)).convert("RGBA")
         frame.paste(avatar, (40, 140), avatar)
 
         # Server logo
         if member.guild.icon:
             icon_asset = member.guild.icon.with_size(128)
-            icon_bytes = icon_asset.read()
+            icon_bytes = await icon_asset.read()
             icon = Image.open(BytesIO(icon_bytes)).resize((80,80)).convert("RGBA")
             frame.paste(icon, (780, 20), icon)
 
@@ -53,11 +56,13 @@ def generate_welcome_image(member: discord.Member, message: str, bg_path: str):
             duration=bg.info.get("duration", 100),
             loop=0
         )
+        fmt = "gif"
     else:
         frames[0].save(buf, format="PNG")
+        fmt = "png"
 
     buf.seek(0)
-    return buf, ("GIF" if is_gif else "PNG")
+    return buf, fmt
 
 # ================= COG =================
 class Welcome(commands.Cog):
@@ -110,9 +115,9 @@ class Welcome(commands.Cog):
         message, bg_path, mode = row
 
         if mode == "image":
-            img, fmt = generate_welcome_image(interaction.user, message, bg_path or DEFAULT_BG)
+            img, fmt = await generate_welcome_image(interaction.user, message, bg_path or DEFAULT_BG)
             await interaction.response.send_message(
-                file=discord.File(img, f"welcome_preview.{fmt.lower()}"),
+                file=discord.File(img, f"welcome_preview.{fmt}"),
                 ephemeral=True
             )
 
@@ -154,13 +159,19 @@ class Welcome(commands.Cog):
 
         # DM welcome
         try:
-            await member.send(f"👋 Welcome to {member.guild.name}!")
+            dm_text = (
+                f"👋 Welcome to **{member.guild.name}**!\n\n"
+                f"{message.format(user=member.name, server=member.guild.name)}\n\n"
+                "Enjoy your stay 💖"
+            )
+            await member.send(dm_text)
         except:
             pass
 
+        # Server welcome
         if mode == "image":
-            img, fmt = generate_welcome_image(member, message, bg_path or DEFAULT_BG)
-            await channel.send(file=discord.File(img, f"welcome.{fmt.lower()}"))
+            img, fmt = await generate_welcome_image(member, message, bg_path or DEFAULT_BG)
+            await channel.send(file=discord.File(img, f"welcome.{fmt}"))
 
         elif mode == "embed":
             embed = discord.Embed(
