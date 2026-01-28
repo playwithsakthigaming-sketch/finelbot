@@ -63,17 +63,9 @@ async def init_db():
             guild_id INTEGER PRIMARY KEY,
             welcome_channel INTEGER,
             welcome_role INTEGER,
-            goodbye_channel INTEGER,
-            modlog_channel INTEGER
-        )
+            welcome_message TEXT
+            )
         """)
-
-        # ---- SAFE ADD NEW COLUMNS ----
-        for column in ["welcome_message", "welcome_bg", "welcome_mode"]:
-            try:
-                await db.execute(f"ALTER TABLE guild_settings ADD COLUMN {column} TEXT")
-            except aiosqlite.OperationalError:
-                pass
 
         # ================= TICKETS =================
         await db.execute("""
