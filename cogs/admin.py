@@ -1,84 +1,68 @@
 import discord
+import os
 from discord.ext import commands
 from discord import app_commands
-import os, asyncio
+from supabase import create_client
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # =========================
-    # PING
-    # =========================
-    @app_commands.command(name="ping", description="Check bot latency")
-    async def ping(self, interaction: discord.Interaction):
-        latency = round(self.bot.latency * 1000)
-        await interaction.response.send_message(f"🏓 Pong! `{latency}ms`")
-
-    # =========================
-    # CLEAR CHAT
-    # =========================
+    # ================= CLEAR CHAT =================
     @app_commands.command(name="clear", description="Clear messages")
     @app_commands.checks.has_permissions(manage_messages=True)
     async def clear(self, interaction: discord.Interaction, amount: int):
         if amount <= 0 or amount > 100:
             return await interaction.response.send_message(
-                "❌ Amount must be between 1 and 100.",
+                "❌ Amount must be between 1 and 100",
                 ephemeral=True
             )
 
         await interaction.channel.purge(limit=amount)
         await interaction.response.send_message(
-            f"✅ Deleted {amount} messages.",
+            f"✅ Cleared {amount} messages",
             ephemeral=True
         )
 
-    # =========================
-    # CREATE CHANNEL
-    # =========================
-    @app_commands.command(name="create_channel", description="Create a new channel")
+    # ================= CREATE CHANNEL =================
+    @app_commands.command(name="create_channel", description="Create a channel")
     @app_commands.checks.has_permissions(manage_channels=True)
     async def create_channel(
         self,
         interaction: discord.Interaction,
         name: str,
-        channel_type: str  # text / voice
+        category: discord.CategoryChannel = None
     ):
-        guild = interaction.guild
-
-        if channel_type.lower() == "text":
-            channel = await guild.create_text_channel(name)
-        elif channel_type.lower() == "voice":
-            channel = await guild.create_voice_channel(name)
-        else:
-            return await interaction.response.send_message(
-                "❌ channel_type must be `text` or `voice`",
-                ephemeral=True
-            )
-
+        channel = await interaction.guild.create_text_channel(
+            name=name,
+            category=category
+        )
         await interaction.response.send_message(
-            f"✅ Channel created: {channel.mention}"
+            f"✅ Channel created: {channel.mention}",
+            ephemeral=True
         )
 
-    # =========================
-    # EDIT CHANNEL NAME
-    # =========================
-    @app_commands.command(name="edit_channel", description="Rename a channel")
+    # ================= EDIT CHANNEL =================
+    @app_commands.command(name="edit_channel", description="Edit channel name or topic")
     @app_commands.checks.has_permissions(manage_channels=True)
     async def edit_channel(
         self,
         interaction: discord.Interaction,
         channel: discord.TextChannel,
-        new_name: str
+        new_name: str = None,
+        new_topic: str = None
     ):
-        await channel.edit(name=new_name)
+        await channel.edit(name=new_name or channel.name, topic=new_topic)
         await interaction.response.send_message(
-            f"✅ Channel renamed to `{new_name}`"
+            f"✅ Channel updated: {channel.mention}",
+            ephemeral=True
         )
 
-    # =========================
-    # DELETE CHANNEL
-    # =========================
+    # ================= DELETE CHANNEL =================
     @app_commands.command(name="delete_channel", description="Delete a channel")
     @app_commands.checks.has_permissions(manage_channels=True)
     async def delete_channel(
@@ -86,16 +70,48 @@ class Admin(commands.Cog):
         interaction: discord.Interaction,
         channel: discord.TextChannel
     ):
+        await channel.delete()
         await interaction.response.send_message(
-            f"⚠️ Deleting channel {channel.name}...",
+            "✅ Channel deleted",
             ephemeral=True
         )
-        await channel.delete()
 
-    # =========================
-    # ADD EMOJI
-    # =========================
-    @app_commands.command(name="add_emoji", description="Add custom emoji")
+    # ================= ADD CUSTOM COMMAND =================
+    @app_commands.command(name="add_command", description="Add custom command")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def add_command(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        response: str
+    ):
+        supabase.table("custom_commands").upsert({
+            "name": name.lower(),
+            "response": response
+        }).execute()
+
+        await interaction.response.send_message(
+            f"✅ Custom command `/{name}` added",
+            ephemeral=True
+        )
+
+    # ================= RUN CUSTOM COMMAND =================
+    @app_commands.command(name="custom", description="Run a custom command")
+    async def custom(self, interaction: discord.Interaction, name: str):
+        res = supabase.table("custom_commands").select("*").eq(
+            "name", name.lower()
+        ).execute()
+
+        if not res.data:
+            return await interaction.response.send_message(
+                "❌ Command not found",
+                ephemeral=True
+            )
+
+        await interaction.response.send_message(res.data[0]["response"])
+
+    # ================= ADD EMOJI =================
+    @app_commands.command(name="add_emoji", description="Add emoji to server")
     @app_commands.checks.has_permissions(manage_emojis=True)
     async def add_emoji(
         self,
@@ -104,35 +120,28 @@ class Admin(commands.Cog):
         image_url: str
     ):
         try:
-            async with self.bot.http._HTTPClient__session.get(image_url) as resp:
-                img_bytes = await resp.read()
+            import requests
+            from io import BytesIO
+
+            r = requests.get(image_url)
+            img = BytesIO(r.content)
 
             emoji = await interaction.guild.create_custom_emoji(
                 name=name,
-                image=img_bytes
+                image=img.read()
             )
 
             await interaction.response.send_message(
-                f"✅ Emoji added: {emoji}"
+                f"✅ Emoji created: {emoji}",
+                ephemeral=True
             )
         except Exception as e:
             await interaction.response.send_message(
-                f"❌ Failed to add emoji: `{e}`",
+                f"❌ Failed to create emoji:\n{e}",
                 ephemeral=True
             )
 
-    # =========================
-    # RESTART BOT
-    # =========================
-    @app_commands.command(name="restart_bot", description="Restart the bot")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def restart_bot(self, interaction: discord.Interaction):
-        await interaction.response.send_message("♻️ Restarting bot...", ephemeral=True)
-        os.execv(sys.executable, ["python"] + sys.argv)
 
-
-# =========================
-# SETUP
-# =========================
+# ================= SETUP =================
 async def setup(bot: commands.Bot):
     await bot.add_cog(Admin(bot))
