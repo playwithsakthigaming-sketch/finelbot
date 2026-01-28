@@ -1,81 +1,66 @@
+# cogs/coin_shop.py
 import discord
 from discord.ext import commands
 from discord import app_commands
 from supabase import create_client
 import os
-import time
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-TIERS = {
-    "Bronze": 100,
-    "Silver": 200,
-    "Gold": 300
-}
-
 class CoinShop(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # ---------------- PANEL ----------------
+    # ---------------- BALANCE ----------------
+    @app_commands.command(name="balance", description="Check your coin balance")
+    async def balance(self, interaction: discord.Interaction):
+        res = supabase.table("coins").select("*").eq("user_id", interaction.user.id).execute()
+
+        if not res.data:
+            supabase.table("coins").insert({"user_id": interaction.user.id, "balance": 0}).execute()
+            balance = 0
+        else:
+            balance = res.data[0]["balance"]
+
+        await interaction.response.send_message(
+            f"💰 {interaction.user.mention} you have **{balance} coins**"
+        )
+
+    # ---------------- ADD COINS (ADMIN) ----------------
+    @app_commands.command(name="add_coins", description="Add coins to user (admin)")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def add_coins(self, interaction: discord.Interaction, member: discord.Member, amount: int):
+        if amount <= 0:
+            return await interaction.response.send_message("❌ Amount must be positive", ephemeral=True)
+
+        res = supabase.table("coins").select("*").eq("user_id", member.id).execute()
+        if not res.data:
+            supabase.table("coins").insert({"user_id": member.id, "balance": amount}).execute()
+        else:
+            supabase.table("coins").update(
+                {"balance": res.data[0]["balance"] + amount}
+            ).eq("user_id", member.id).execute()
+
+        await interaction.response.send_message(f"✅ Added {amount} coins to {member.mention}")
+
+    # ---------------- SHOP PANEL ----------------
     @app_commands.command(name="coin_shop_panel", description="Create coin shop panel")
     @app_commands.checks.has_permissions(administrator=True)
     async def coin_shop_panel(self, interaction: discord.Interaction):
         embed = discord.Embed(
-            title="🛒 PSG Coin Shop",
+            title="🪙 PSG Coin Shop",
             description=(
                 "Bronze – 100 coins\n"
                 "Silver – 200 coins\n"
                 "Gold – 300 coins\n\n"
-                "Click button to buy premium"
+                "Use `/balance` to check coins."
             ),
             color=discord.Color.gold()
         )
-
-        view = discord.ui.View(timeout=None)
-
-        for tier in TIERS:
-            btn = discord.ui.Button(label=tier, style=discord.ButtonStyle.primary)
-            async def callback(inter, t=tier):
-                await self.buy_premium(inter, t)
-            btn.callback = callback
-            view.add_item(btn)
-
-        await interaction.channel.send(embed=embed, view=view)
+        await interaction.channel.send(embed=embed)
         await interaction.response.send_message("✅ Coin shop panel created", ephemeral=True)
-
-    # ---------------- BUY ----------------
-    async def buy_premium(self, interaction: discord.Interaction, tier: str):
-        user_id = interaction.user.id
-        cost = TIERS[tier]
-
-        res = supabase.table("coins").select("*").eq("user_id", user_id).execute()
-        balance = res.data[0]["balance"] if res.data else 0
-
-        if balance < cost:
-            return await interaction.response.send_message(
-                f"❌ Not enough coins. Need {cost}",
-                ephemeral=True
-            )
-
-        # Deduct coins
-        supabase.table("coins").update(
-            {"balance": balance - cost}
-        ).eq("user_id", user_id).execute()
-
-        # Add premium
-        supabase.table("premium").upsert({
-            "user_id": user_id,
-            "tier": tier,
-            "expires": int(time.time()) + (86400 * 7)
-        }).execute()
-
-        await interaction.response.send_message(
-            f"✅ You bought **{tier} Premium**!",
-            ephemeral=True
-        )
 
 
 async def setup(bot: commands.Bot):
