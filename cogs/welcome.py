@@ -5,6 +5,10 @@ import aiosqlite
 
 DB_NAME = "bot.db"
 
+# 🔗 PUT YOUR IMAGE URL HERE
+LOGO_URL = "https://files.catbox.moe/xa2cpv.png"  # replace with your image link
+
+
 class Welcome(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -71,9 +75,11 @@ class Welcome(commands.Cog):
                     mention=interaction.user.mention,
                     server=interaction.guild.name
                 ),
-                color=discord.Color.green()
+                color=discord.Color.gold()
             )
+
             embed.set_thumbnail(url=interaction.user.display_avatar.url)
+            embed.set_image(url=LOGO_URL)
 
             await interaction.followup.send(embed=embed)
 
@@ -127,9 +133,11 @@ class Welcome(commands.Cog):
                     mention=member.mention,
                     server=member.guild.name
                 ),
-                color=discord.Color.green()
+                color=discord.Color.gold()
             )
+
             embed.set_thumbnail(url=member.display_avatar.url)
+            embed.set_image(url=LOGO_URL)
             embed.set_footer(text=f"Member #{member.guild.member_count}")
 
             await channel.send(embed=embed)
