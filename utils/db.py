@@ -1,136 +1,68 @@
-import aiosqlite
+from supabase import create_client
+import os
 
-DB_NAME = "bot.db"
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# ======================
+# INIT DB (no create tables here, done in Supabase SQL)
+# ======================
 async def init_db():
-    async with aiosqlite.connect(DB_NAME) as db:
+    print("✅ Supabase connected")
 
-        # ================= SQLITE SAFETY =================
-        await db.execute("PRAGMA journal_mode=WAL;")
-        await db.execute("PRAGMA synchronous=NORMAL;")
-        await db.execute("PRAGMA foreign_keys=ON;")
 
-        # ================= COINS =================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS coins (
-            user_id INTEGER PRIMARY KEY,
-            balance INTEGER DEFAULT 0
-        )
-        """)
+# ======================
+# COINS FUNCTIONS
+# ======================
+async def get_coins(user_id: int):
+    data = supabase.table("coins").select("*").eq("user_id", user_id).execute()
+    if data.data:
+        return data.data[0]["balance"]
+    return 0
 
-        # ================= PREMIUM =================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS premium (
-            user_id INTEGER PRIMARY KEY,
-            tier TEXT,
-            expires INTEGER
-        )
-        """)
 
-        # ================= PAYMENTS / INVOICES =================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS payments (
-            invoice_id TEXT PRIMARY KEY,
-            user_id INTEGER,
-            rupees INTEGER,
-            coins INTEGER,
-            timestamp INTEGER
-        )
-        """)
+async def add_coins(user_id: int, amount: int):
+    existing = supabase.table("coins").select("*").eq("user_id", user_id).execute()
 
-        # ================= LEVELS =================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS levels (
-            user_id INTEGER,
-            guild_id INTEGER,
-            xp INTEGER DEFAULT 0,
-            level INTEGER DEFAULT 1,
-            PRIMARY KEY (user_id, guild_id)
-        )
-        """)
+    if existing.data:
+        supabase.table("coins").update(
+            {"balance": existing.data[0]["balance"] + amount}
+        ).eq("user_id", user_id).execute()
+    else:
+        supabase.table("coins").insert(
+            {"user_id": user_id, "balance": amount}
+        ).execute()
 
-        # ================= THEMES =================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS user_themes (
-            user_id INTEGER PRIMARY KEY,
-            theme TEXT DEFAULT 'default'
-        )
-        """)
 
-        # ================= GUILD SETTINGS =================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS guild_settings (
-            guild_id INTEGER PRIMARY KEY,
-            welcome_channel INTEGER,
-            welcome_role INTEGER,
-            welcome_message TEXT
-            )
-        """)
+# ======================
+# WELCOME CONFIG
+# ======================
+async def set_welcome_config(guild_id, channel, role, message, thumbnail):
+    supabase.table("welcome_config").upsert({
+        "guild_id": guild_id,
+        "welcome_channel": channel,
+        "welcome_role": role,
+        "welcome_message": message
+    }).execute()
 
-        # ================= TICKETS =================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS tickets (
-            channel_id INTEGER PRIMARY KEY,
-            user_id INTEGER,
-            claimed_by INTEGER,
-            category TEXT,
-            created_at INTEGER
-        )
-        """)
 
-        # ================= TICKET COOLDOWNS =================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS ticket_cooldowns (
-            user_id INTEGER PRIMARY KEY,
-            last_created INTEGER
-        )
-        """)
+async def get_welcome_config(guild_id):
+    res = supabase.table("welcome_config").select("*").eq("guild_id", guild_id).execute()
+    if res.data:
+        return res.data[0]
+    return None
 
-        # ================= TRANSCRIPTS =================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS ticket_transcripts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_id INTEGER,
-            author_id INTEGER,
-            message TEXT,
-            timestamp INTEGER
-        )
-        """)
 
-        # ================= WARNINGS =================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS warnings (
-            user_id INTEGER,
-            guild_id INTEGER,
-            count INTEGER DEFAULT 0,
-            PRIMARY KEY (user_id, guild_id)
-        )
-        """)
-
-        # ================= YOUTUBE ALERTS =================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS youtube_alerts (
-            guild_id INTEGER,
-            youtube_channel TEXT,
-            discord_channel INTEGER,
-            role_id INTEGER,
-            message TEXT,
-            last_video TEXT,
-            PRIMARY KEY (guild_id, youtube_channel)
-        )
-        """)
-
-        # ================= COUPONS =================
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS coupons (
-            code TEXT PRIMARY KEY,
-            type TEXT,
-            value INTEGER,
-            max_uses INTEGER,
-            used INTEGER DEFAULT 0,
-            expires INTEGER
-        )
-        """)
-
-        await db.commit()
-        print("✅ Database checked & updated")
+# ======================
+# PAYMENTS
+# ======================
+async def save_payment(invoice_id, user_id, rupees, coins, timestamp):
+    supabase.table("payments").insert({
+        "invoice_id": invoice_id,
+        "user_id": user_id,
+        "rupees": rupees,
+        "coins": coins,
+        "timestamp": timestamp
+    }).execute()
