@@ -1,12 +1,19 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import aiosqlite
+from supabase import create_client, Client
+import os
+from dotenv import load_dotenv
 
-DB_NAME = "bot.db"
+load_dotenv()
 
-# 🔗 PUT YOUR IMAGE URL HERE
-LOGO_URL = "https://files.catbox.moe/c1lm6g.png"  # replace with your image link
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# 🔗 YOUR LOGO IMAGE
+LOGO_URL = "https://files.catbox.moe/c1lm6g.png"
 
 
 class Welcome(commands.Cog):
@@ -26,22 +33,17 @@ class Welcome(commands.Cog):
         await interaction.response.defer(ephemeral=True)
 
         try:
-            async with aiosqlite.connect(DB_NAME) as db:
-                await db.execute("""
-                INSERT OR REPLACE INTO guild_settings
-                (guild_id, welcome_channel, welcome_role, welcome_message)
-                VALUES (?, ?, ?, ?)
-                """, (
-                    interaction.guild.id,
-                    channel.id,
-                    role.id,
-                    message
-                ))
-                await db.commit()
+            data = {
+                "guild_id": interaction.guild.id,
+                "welcome_channel": channel.id,
+                "welcome_role": role.id,
+                "welcome_message": message
+            }
+
+            supabase.table("guild_settings").upsert(data).execute()
 
             await interaction.followup.send(
-                "✅ Welcome system configured!\n\n"
-                "You can use:\n"
+                "✅ Welcome system configured!\n"
                 "`{user}` = username\n"
                 "`{server}` = server name"
             )
@@ -56,16 +58,15 @@ class Welcome(commands.Cog):
         await interaction.response.defer(ephemeral=True)
 
         try:
-            async with aiosqlite.connect(DB_NAME) as db:
-                cursor = await db.execute("""
-                SELECT welcome_message FROM guild_settings WHERE guild_id=?
-                """, (interaction.guild.id,))
-                row = await cursor.fetchone()
+            res = supabase.table("guild_settings") \
+                .select("welcome_message") \
+                .eq("guild_id", interaction.guild.id) \
+                .execute()
 
-            if not row:
+            if not res.data:
                 return await interaction.followup.send("❌ Welcome not configured.")
 
-            (message,) = row
+            message = res.data[0]["welcome_message"]
 
             embed = discord.Embed(
                 title="🎉 Welcome!",
@@ -80,7 +81,7 @@ class Welcome(commands.Cog):
             embed.set_image(url=LOGO_URL)
 
             await interaction.followup.send(
-                content=interaction.user.mention,  # 👈 mention above embed
+                content=interaction.user.mention,
                 embed=embed
             )
 
@@ -91,17 +92,19 @@ class Welcome(commands.Cog):
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         try:
-            async with aiosqlite.connect(DB_NAME) as db:
-                cursor = await db.execute("""
-                SELECT welcome_channel, welcome_role, welcome_message
-                FROM guild_settings WHERE guild_id=?
-                """, (member.guild.id,))
-                row = await cursor.fetchone()
+            res = supabase.table("guild_settings") \
+                .select("*") \
+                .eq("guild_id", member.guild.id) \
+                .execute()
 
-            if not row:
+            if not res.data:
                 return
 
-            channel_id, role_id, message = row
+            data = res.data[0]
+            channel_id = data["welcome_channel"]
+            role_id = data["welcome_role"]
+            message = data["welcome_message"]
+
             channel = member.guild.get_channel(channel_id)
 
             # Auto role
@@ -140,7 +143,7 @@ class Welcome(commands.Cog):
             embed.set_footer(text=f"Member #{member.guild.member_count}")
 
             await channel.send(
-                content=member.mention,  # 👈 mention above embed
+                content=member.mention,
                 embed=embed
             )
 
