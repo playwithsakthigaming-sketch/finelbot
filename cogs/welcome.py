@@ -2,14 +2,17 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import aiosqlite
-import os
+import requests
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
+import os
 
 DB_NAME = "bot.db"
 
 FONT_PATH = "fonts/CinzelDecorative-Bold.ttf"
-DEFAULT_BG = "assets/welcome_bg.png"
+
+# Default background URL
+DEFAULT_BG_URL = "https://files.catbox.moe/xa2cpv.png"  # change this
 
 # ================= FONT =================
 def get_font(size):
@@ -17,9 +20,18 @@ def get_font(size):
         raise FileNotFoundError(f"Font not found: {FONT_PATH}")
     return ImageFont.truetype(FONT_PATH, size)
 
+# ================= LOAD BACKGROUND FROM URL =================
+def load_bg_from_url(url: str):
+    headers = {"User-Agent": "Mozilla/5.0"}
+    r = requests.get(url, headers=headers, timeout=15)
+    r.raise_for_status()
+    bg = Image.open(BytesIO(r.content)).convert("RGB").resize((900, 400))
+    return bg
+
 # ================= IMAGE GENERATOR =================
-async def generate_welcome_image(member: discord.Member, message: str, bg_path: str):
-    bg = Image.open(bg_path).convert("RGB").resize((900, 400))
+async def generate_welcome_image(member: discord.Member, message: str, bg_url: str):
+    bg = load_bg_from_url(bg_url)
+
     draw = ImageDraw.Draw(bg)
 
     # User avatar
@@ -51,14 +63,12 @@ class Welcome(commands.Cog):
         role: discord.Role,
         message: str,
         mode: str,  # text/embed/image
-        bg_path: str = DEFAULT_BG
+        bg_url: str = DEFAULT_BG_URL
     ):
         await interaction.response.defer(ephemeral=True)
 
         if mode not in ["text", "embed", "image"]:
-            return await interaction.followup.send(
-                "❌ Mode must be text, embed, or image"
-            )
+            return await interaction.followup.send("❌ Mode must be text, embed, or image")
 
         try:
             async with aiosqlite.connect(DB_NAME) as db:
@@ -72,7 +82,7 @@ class Welcome(commands.Cog):
                     role.id,
                     message,
                     mode,
-                    bg_path
+                    bg_url
                 ))
                 await db.commit()
 
@@ -98,13 +108,13 @@ class Welcome(commands.Cog):
             if not row:
                 return await interaction.followup.send("❌ Welcome not configured.")
 
-            message, mode, bg_path = row
+            message, mode, bg_url = row
 
             if mode == "image":
                 img = await generate_welcome_image(
                     interaction.user,
                     message,
-                    bg_path or DEFAULT_BG
+                    bg_url or DEFAULT_BG_URL
                 )
                 await interaction.followup.send(
                     file=discord.File(img, "welcome_preview.png")
@@ -147,7 +157,7 @@ class Welcome(commands.Cog):
             if not row:
                 return
 
-            channel_id, role_id, message, mode, bg_path = row
+            channel_id, role_id, message, mode, bg_url = row
             channel = member.guild.get_channel(channel_id)
 
             # Auto role
@@ -176,7 +186,7 @@ class Welcome(commands.Cog):
                 img = await generate_welcome_image(
                     member,
                     message,
-                    bg_path or DEFAULT_BG
+                    bg_url or DEFAULT_BG_URL
                 )
                 await channel.send(file=discord.File(img, "welcome.png"))
 
