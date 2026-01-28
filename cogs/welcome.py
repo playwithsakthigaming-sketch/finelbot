@@ -6,7 +6,7 @@ import aiosqlite
 DB_NAME = "bot.db"
 
 # 🔗 PUT YOUR IMAGE URL HERE
-LOGO_URL = "https://files.catbox.moe/xa2cpv.png"  # replace with your image link
+LOGO_URL = "https://files.catbox.moe/c1lm6g.png"  # replace with your image link
 
 
 class Welcome(commands.Cog):
@@ -43,7 +43,6 @@ class Welcome(commands.Cog):
                 "✅ Welcome system configured!\n\n"
                 "You can use:\n"
                 "`{user}` = username\n"
-                "`{mention}` = user mention\n"
                 "`{server}` = server name"
             )
 
@@ -69,10 +68,9 @@ class Welcome(commands.Cog):
             (message,) = row
 
             embed = discord.Embed(
-                title="🎉 Welcome Preview",
+                title="🎉 Welcome!",
                 description=message.format(
                     user=interaction.user.name,
-                    mention=interaction.user.mention,
                     server=interaction.guild.name
                 ),
                 color=discord.Color.gold()
@@ -81,7 +79,10 @@ class Welcome(commands.Cog):
             embed.set_thumbnail(url=interaction.user.display_avatar.url)
             embed.set_image(url=LOGO_URL)
 
-            await interaction.followup.send(embed=embed)
+            await interaction.followup.send(
+                content=interaction.user.mention,  # 👈 mention above embed
+                embed=embed
+            )
 
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {e}")
@@ -116,7 +117,6 @@ class Welcome(commands.Cog):
                 await member.send(
                     message.format(
                         user=member.name,
-                        mention=member.mention,
                         server=member.guild.name
                     )
                 )
@@ -130,7 +130,6 @@ class Welcome(commands.Cog):
                 title="🎉 Welcome!",
                 description=message.format(
                     user=member.name,
-                    mention=member.mention,
                     server=member.guild.name
                 ),
                 color=discord.Color.gold()
@@ -140,7 +139,10 @@ class Welcome(commands.Cog):
             embed.set_image(url=LOGO_URL)
             embed.set_footer(text=f"Member #{member.guild.member_count}")
 
-            await channel.send(embed=embed)
+            await channel.send(
+                content=member.mention,  # 👈 mention above embed
+                embed=embed
+            )
 
         except Exception as e:
             print("Welcome error:", e)
