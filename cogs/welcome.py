@@ -12,7 +12,7 @@ DB_NAME = "bot.db"
 FONT_PATH = "fonts/CinzelDecorative-Bold.ttf"
 
 # Default background URL
-DEFAULT_BG_URL = "https://files.catbox.moe/xa2cpv.png"  # change this
+DEFAULT_BG_URL = "https://files.catbox.moe/yslxzu.png"  # change if needed
 
 # ================= FONT =================
 def get_font(size):
@@ -68,7 +68,9 @@ class Welcome(commands.Cog):
         await interaction.response.defer(ephemeral=True)
 
         if mode not in ["text", "embed", "image"]:
-            return await interaction.followup.send("❌ Mode must be text, embed, or image")
+            return await interaction.followup.send(
+                "❌ Mode must be text, embed, or image"
+            )
 
         try:
             async with aiosqlite.connect(DB_NAME) as db:
@@ -123,9 +125,9 @@ class Welcome(commands.Cog):
             elif mode == "embed":
                 embed = discord.Embed(
                     title="🎉 Welcome Preview",
-                    description=message.format(
-                        user=interaction.user.mention,
-                        server=interaction.guild.name
+                    description=(
+                        f"👤 **{interaction.user.mention}**\n\n"
+                        f"{message.format(user=interaction.user.mention, server=interaction.guild.name)}"
                     ),
                     color=discord.Color.green()
                 )
@@ -193,13 +195,14 @@ class Welcome(commands.Cog):
             elif mode == "embed":
                 embed = discord.Embed(
                     title="🎉 Welcome!",
-                    description=message.format(
-                        user=member.mention,
-                        server=member.guild.name
+                    description=(
+                        f"👤 **{member.mention}**\n\n"
+                        f"{message.format(user=member.mention, server=member.guild.name)}"
                     ),
                     color=discord.Color.green()
                 )
                 embed.set_thumbnail(url=member.display_avatar.url)
+                embed.set_footer(text=f"Member #{member.guild.member_count}")
                 await channel.send(embed=embed)
 
             else:
