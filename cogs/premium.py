@@ -1,187 +1,71 @@
-import discord
-import aiosqlite
-import time
+# cogs/premium.py
+import discord, time, os
 from discord.ext import commands, tasks
 from discord import app_commands
+from supabase import create_client
 
-# =========================================================
-# CONFIG
-# =========================================================
+supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 
-# Replace with your real role IDs
-PREMIUM_ROLES = {
-    "bronze": 1463834717987274814,
-    "silver": 1463884119032463433,
-    "gold":   1463884209025187880
+TIERS = {
+    "bronze": 3,
+    "silver": 5,
+    "gold": 7
 }
 
-# =========================================================
-# PREMIUM COG
-# =========================================================
-
 class Premium(commands.Cog):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot):
         self.bot = bot
-        self.expiry_loop.start()
+        self.check_expiry.start()
 
-    # -----------------------------------------------------
-    # AUTO EXPIRY CHECK (EVERY MINUTE)
-    # -----------------------------------------------------
-    @tasks.loop(minutes=1)
-    async def expiry_loop(self):
+    # ---------------- BUY PREMIUM ----------------
+    @app_commands.command(name="buy_premium", description="Buy premium tier")
+    async def buy_premium(self, interaction: discord.Interaction, tier: str):
+        if tier not in TIERS:
+            return await interaction.response.send_message("❌ Tier must be bronze/silver/gold")
+
+        days = TIERS[tier]
+        expires = int(time.time()) + (days * 86400)
+
+        supabase.table("premium").upsert({
+            "user_id": interaction.user.id,
+            "tier": tier,
+            "expires": expires
+        }).execute()
+
+        await interaction.response.send_message(
+            f"✅ {interaction.user.mention} bought **{tier.upper()}** premium for {days} days"
+        )
+
+    # ---------------- CHECK PREMIUM ----------------
+    @app_commands.command(name="premium_status", description="Check premium status")
+    async def premium_status(self, interaction: discord.Interaction):
+        res = supabase.table("premium").select("*").eq("user_id", interaction.user.id).execute()
+
+        if not res.data:
+            return await interaction.response.send_message("❌ You have no premium")
+
+        data = res.data[0]
+        remaining = data["expires"] - int(time.time())
+        days = remaining // 86400
+
+        await interaction.response.send_message(
+            f"⭐ Tier: {data['tier']}\n⏳ Days left: {days}"
+        )
+
+    # ---------------- AUTO EXPIRY ----------------
+    @tasks.loop(minutes=10)
+    async def check_expiry(self):
         now = int(time.time())
+        res = supabase.table("premium").select("*").execute()
 
-        async with aiosqlite.connect("bot.db") as db:
-            cur = await db.execute(
-                "SELECT user_id, tier FROM premium WHERE expires < ?",
-                (now,)
-            )
-            expired = await cur.fetchall()
+        for row in res.data:
+            if row["expires"] <= now:
+                supabase.table("premium").delete().eq("user_id", row["user_id"]).execute()
 
-            for user_id, tier in expired:
-                for guild in self.bot.guilds:
-                    member = guild.get_member(user_id)
-                    if not member:
-                        continue
+    @check_expiry.before_loop
+    async def before_loop(self):
+        await self.bot.wait_until_ready()
 
-                    role_id = PREMIUM_ROLES.get(tier)
-                    if role_id:
-                        role = guild.get_role(role_id)
-                        if role:
-                            try:
-                                await member.remove_roles(role, reason="Premium expired")
-                            except:
-                                pass
 
-                await db.execute(
-                    "DELETE FROM premium WHERE user_id=?",
-                    (user_id,)
-                )
-
-            await db.commit()
-
-    # -----------------------------------------------------
-    # /premium — USER STATUS
-    # -----------------------------------------------------
-    @app_commands.command(name="premium", description="💎 View your premium status")
-    async def premium(self, interaction: discord.Interaction):
-        async with aiosqlite.connect("bot.db") as db:
-            cur = await db.execute(
-                "SELECT tier, expires FROM premium WHERE user_id=?",
-                (interaction.user.id,)
-            )
-            row = await cur.fetchone()
-
-        if not row:
-            return await interaction.response.send_message(
-                "❌ You do not have premium.",
-                ephemeral=True
-            )
-
-        tier, expires = row
-        remaining = expires - int(time.time())
-        days = max(0, remaining // 86400)
-
-        embed = discord.Embed(
-            title="💎 Premium Status",
-            color=discord.Color.gold()
-        )
-        embed.add_field(name="Tier", value=tier.title())
-        embed.add_field(name="Expires In", value=f"{days} days")
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    # -----------------------------------------------------
-    # ADMIN: GRANT PREMIUM
-    # -----------------------------------------------------
-    @app_commands.command(name="grant_premium", description="👑 Grant premium to a user")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def grant_premium(
-        self,
-        interaction: discord.Interaction,
-        member: discord.Member,
-        tier: str,
-        days: int
-    ):
-        tier = tier.lower()
-        if tier not in PREMIUM_ROLES:
-            return await interaction.response.send_message(
-                "❌ Invalid tier.",
-                ephemeral=True
-            )
-
-        expires = int(time.time()) + days * 86400
-
-        async with aiosqlite.connect("bot.db") as db:
-            await db.execute(
-                """
-                INSERT INTO premium (user_id, tier, expires)
-                VALUES (?,?,?)
-                ON CONFLICT(user_id)
-                DO UPDATE SET tier=excluded.tier, expires=excluded.expires
-                """,
-                (member.id, tier, expires)
-            )
-            await db.commit()
-
-        role = interaction.guild.get_role(PREMIUM_ROLES[tier])
-        if role:
-            try:
-                await member.add_roles(role, reason="Premium granted")
-            except:
-                pass
-
-        await interaction.response.send_message(
-            f"✅ Granted **{tier.title()} Premium** to {member.mention} for **{days} days**",
-            ephemeral=True
-        )
-
-    # -----------------------------------------------------
-    # ADMIN: REMOVE PREMIUM
-    # -----------------------------------------------------
-    @app_commands.command(name="remove_premium", description="❌ Remove premium from a user")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def remove_premium(
-        self,
-        interaction: discord.Interaction,
-        member: discord.Member
-    ):
-        async with aiosqlite.connect("bot.db") as db:
-            cur = await db.execute(
-                "SELECT tier FROM premium WHERE user_id=?",
-                (member.id,)
-            )
-            row = await cur.fetchone()
-
-            if not row:
-                return await interaction.response.send_message(
-                    "❌ User does not have premium.",
-                    ephemeral=True
-                )
-
-            tier = row[0]
-
-            await db.execute(
-                "DELETE FROM premium WHERE user_id=?",
-                (member.id,)
-            )
-            await db.commit()
-
-        role = interaction.guild.get_role(PREMIUM_ROLES.get(tier))
-        if role:
-            try:
-                await member.remove_roles(role, reason="Premium removed")
-            except:
-                pass
-
-        await interaction.response.send_message(
-            f"✅ Removed premium from {member.mention}",
-            ephemeral=True
-        )
-
-# =========================================================
-# SETUP
-# =========================================================
-
-async def setup(bot: commands.Bot):
+async def setup(bot):
     await bot.add_cog(Premium(bot))
