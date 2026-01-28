@@ -1,37 +1,64 @@
 import discord
 from discord.ext import commands
-import os, asyncio
+import asyncio
+import os
 from dotenv import load_dotenv
-from utils.supabase_db import init_db
+
+from utils.db import init_db
 
 load_dotenv()
 
-intents = discord.Intents.all()
+TOKEN = os.getenv("DISCORD_TOKEN")
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+intents = discord.Intents.default()
+intents.members = True
+intents.message_content = True
+intents.voice_states = True
 
 COGS = [
-    "cogs.welcome",
-    "cogs.economy",
-    "cogs.premium",
     "cogs.coin_shop",
-    "cogs.payment",
     "cogs.levels",
-    "cogs.tickets"
+    "cogs.coupons",
+    "cogs.premium",
+    "cogs.themes",
+    "cogs.tickets",
+    "cogs.youtube"
 ]
+
+class MyBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix="!", intents=intents)
+
+    async def setup_hook(self):
+        await init_db()
+        print("✅ Database initialized")
+
+        for cog in COGS:
+            try:
+                await self.load_extension(cog)
+                print(f"✅ Loaded {cog}")
+            except Exception as e:
+                print(f"❌ Failed to load {cog}: {e}")
+
+        await self.tree.sync()
+        print("✅ Slash commands synced")
+
+
+bot = MyBot()
+
 
 @bot.event
 async def on_ready():
     print(f"🤖 Logged in as {bot.user}")
-    await init_db()
-    await bot.tree.sync()
 
-async def load_cogs():
-    for cog in COGS:
-        await bot.load_extension(cog)
 
 async def main():
-    await load_cogs()
-    await bot.start(os.getenv("DISCORD_TOKEN"))
+    if not TOKEN:
+        raise RuntimeError("❌ DISCORD_TOKEN not found in .env")
 
-asyncio.run(main())
+    async with bot:
+        await bot.start(TOKEN)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
